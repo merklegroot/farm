@@ -10,11 +10,13 @@ public sealed class AssetLibrary
     private readonly Dictionary<string, GameAsset> _assets = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<PlacedAsset> _placements = [];
 
-    public void Define(string name, PixelAssetDefinition definition)
+    public IReadOnlyList<PlacedAsset> Placements => _placements;
+
+    public void DefineOrReplace(string name, PixelAssetDefinition definition)
     {
-        if (_assets.ContainsKey(name))
+        if (_assets.TryGetValue(name, out GameAsset? existing))
         {
-            throw new InvalidOperationException($"Asset '{name}' is already defined.");
+            existing.Unload();
         }
 
         _assets[name] = new GameAsset(definition);
@@ -30,19 +32,22 @@ public sealed class AssetLibrary
         _placements.Add(new PlacedAsset(name, worldPosition));
     }
 
-    public void PlaceCustom(PixelAssetDefinition definition, Vector2 worldPosition)
-    {
-        string name = $"runtime_{_placements.Count}_{_assets.Count}";
-        Define(name, definition);
-        Place(name, worldPosition);
-    }
-
     public void Draw(float scale, Vector2 mapOffset)
     {
         foreach (PlacedAsset placement in _placements)
         {
             _assets[placement.Name].DrawWorld(placement.WorldPosition, scale, mapOffset);
         }
+    }
+
+    public void PersistPlacements()
+    {
+        DefinedAssetStore.SavePlacements(_placements.Select(p => new SavedPlacementEntry
+        {
+            Asset = p.Name,
+            X = p.WorldPosition.X,
+            Y = p.WorldPosition.Y,
+        }));
     }
 
     public void Unload()
@@ -56,5 +61,5 @@ public sealed class AssetLibrary
         _placements.Clear();
     }
 
-    private readonly record struct PlacedAsset(string Name, Vector2 WorldPosition);
+    public readonly record struct PlacedAsset(string Name, Vector2 WorldPosition);
 }

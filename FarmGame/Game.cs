@@ -37,6 +37,7 @@ public class Game
 
         var hotbar = new Hotbar(player.WalkTexture, player.ActionsTexture, decorTexture);
         var assets = new AssetLibrary();
+        LoadSavedAssets(assets);
         var assetEditor = new AssetEditorUi();
 
         while (!Raylib.WindowShouldClose())
@@ -45,10 +46,10 @@ public class Game
 
             if (Raylib.IsKeyPressed(KeyboardKey.KEY_TAB))
             {
-                assetEditor.Toggle();
+                assetEditor.Toggle(assets);
             }
 
-            assetEditor.Update(ScreenWidth, ScreenHeight);
+            assetEditor.Update(ScreenWidth, ScreenHeight, assets);
 
             Vector2 offset = ComputeCameraOffset(map.PixelWidth, map.PixelHeight, scale, ScreenWidth, ScreenHeight, player.WorldPosition);
 
@@ -105,6 +106,29 @@ public class Game
         map.Unload();
         UiText.Unload();
         Raylib.CloseWindow();
+    }
+
+    private static void LoadSavedAssets(AssetLibrary assets)
+    {
+        DefinedAssetStore.EnsureDirectoryExists();
+
+        foreach (string name in DefinedAssetStore.ListAssetNames())
+        {
+            SavedAssetFile file = DefinedAssetStore.LoadAsset(name);
+            assets.DefineOrReplace(file.Name, file.ToDefinition());
+        }
+
+        foreach (SavedPlacementEntry placement in DefinedAssetStore.LoadPlacements())
+        {
+            try
+            {
+                assets.Place(placement.Asset, new Vector2(placement.X, placement.Y));
+            }
+            catch (KeyNotFoundException)
+            {
+                // Skip placements whose asset file was removed.
+            }
+        }
     }
 
     private static Vector2 ComputeCameraOffset(float mapPixelW, float mapPixelH, float scale, int screenW, int screenH, Vector2 focusWorldPos)

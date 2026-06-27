@@ -9,8 +9,8 @@ public static class DefinedAssets
 {
     public static void RegisterAll(AssetLibrary library)
     {
-        library.Define("farm_sign", FarmSign());
-        library.Define("scarecrow", Scarecrow());
+        library.DefineOrReplace("farm_sign", FarmSign());
+        library.DefineOrReplace("scarecrow", Scarecrow());
     }
 
     public static PixelAssetDefinition FarmSign()
