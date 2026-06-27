@@ -39,6 +39,12 @@ public class Game
             hotbar.Update();
             player.Update(dt, worldW, worldH, hotbar.SelectedTool);
 
+            if (player.ConsumeToolStrike())
+            {
+                (int tileX, int tileY) = player.GetTargetTile(scale, map);
+                map.TryHoe(tileX, tileY);
+            }
+
             Vector2 offset = ComputeCameraOffset(map.PixelWidth, map.PixelHeight, scale, ScreenWidth, ScreenHeight, player.WorldPosition);
 
             Raylib.BeginDrawing();

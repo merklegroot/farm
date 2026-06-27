@@ -30,6 +30,8 @@ public sealed class Player
     private bool _isUsingTool;
     private PlayerTool _activeTool;
     private float _actionTimer;
+    private bool _strikeApplied;
+    private bool _pendingStrike;
 
     public Texture2D WalkTexture => _texture;
     public Texture2D ActionsTexture => _actionsTexture;
@@ -48,6 +50,13 @@ public sealed class Player
         if (_isUsingTool)
         {
             _actionTimer += deltaTime;
+            int sequenceIndex = Math.Min((int)(_actionTimer / ActionFrameDuration), ActionFrameSequence.Length - 1);
+            if (_activeTool == PlayerTool.Hoe && sequenceIndex >= 1 && !_strikeApplied)
+            {
+                _strikeApplied = true;
+                _pendingStrike = true;
+            }
+
             if (_actionTimer >= ActionDuration)
             {
                 _isUsingTool = false;
@@ -97,6 +106,24 @@ public sealed class Player
         DrawWalkSprite(mapScale, mapOffset);
     }
 
+    public bool ConsumeToolStrike()
+    {
+        if (!_pendingStrike)
+        {
+            return false;
+        }
+
+        _pendingStrike = false;
+        return true;
+    }
+
+    public (int X, int Y) GetTargetTile(float mapScale, TileMap map)
+    {
+        (int tileX, int tileY) = TileMap.WorldToTile(WorldPosition, mapScale, map.TileWidth, map.TileHeight);
+        (int dx, int dy) = GetFacingOffset();
+        return (tileX + dx, tileY + dy);
+    }
+
     public void Unload()
     {
         Raylib.UnloadTexture(_texture);
@@ -121,6 +148,8 @@ public sealed class Player
         _isUsingTool = true;
         _activeTool = selectedTool;
         _actionTimer = 0f;
+        _strikeApplied = false;
+        _pendingStrike = false;
         _velocity = Vector2.Zero;
         return true;
     }
@@ -247,6 +276,15 @@ public sealed class Player
 
         return Vector2.Normalize(new Vector2(x, y));
     }
+
+    private (int X, int Y) GetFacingOffset() => _facing switch
+    {
+        Facing.Down => (0, 1),
+        Facing.Up => (0, -1),
+        Facing.Side when _flipX => (-1, 0),
+        Facing.Side => (1, 0),
+        _ => (0, 1),
+    };
 
     private static int ActionFacingOffset(Facing facing) => facing switch
     {

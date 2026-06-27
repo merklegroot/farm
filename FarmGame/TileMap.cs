@@ -73,6 +73,53 @@ public sealed class TileMap
     public float PixelWidth => Width * TileWidth;
     public float PixelHeight => Height * TileHeight;
 
+    public int GetGid(int tileX, int tileY, int layer = 0)
+    {
+        if (!InBounds(tileX, tileY))
+        {
+            return 0;
+        }
+
+        return ClearGidFlags(LayerGids[layer][tileY * Width + tileX]);
+    }
+
+    public int GetTileId(int tileX, int tileY, int layer = 0)
+    {
+        int gid = GetGid(tileX, tileY, layer);
+        return gid > 0 ? gid - TilesetFirstGid : -1;
+    }
+
+    public bool TryHoe(int tileX, int tileY)
+    {
+        if (!InBounds(tileX, tileY))
+        {
+            return false;
+        }
+
+        int layer = 0;
+        int idx = tileY * Width + tileX;
+        int gid = ClearGidFlags(LayerGids[layer][idx]);
+        int tileId = gid - TilesetFirstGid;
+
+        if (tileId < 0 || !TileIds.IsHoeable(tileId))
+        {
+            return false;
+        }
+
+        LayerGids[layer][idx] = TilesetFirstGid + TileIds.FarmLandCenter;
+        RefreshFarmLandNeighbors(tileX, tileY, layer);
+        return true;
+    }
+
+    public static (int X, int Y) WorldToTile(Vector2 worldPos, float mapScale, int tileWidth, int tileHeight)
+    {
+        float tileWorldW = tileWidth * mapScale;
+        float tileWorldH = tileHeight * mapScale;
+        int x = (int)MathF.Floor(worldPos.X / tileWorldW);
+        int y = (int)MathF.Floor(worldPos.Y / tileWorldH);
+        return (x, y);
+    }
+
     public void Draw(float scale, Vector2 offset)
     {
         foreach (int[] layer in LayerGids)
@@ -118,6 +165,66 @@ public sealed class TileMap
     }
 
     private static int ClearGidFlags(int gid) => gid & 0x1FFFFFFF;
+
+    private bool InBounds(int tileX, int tileY) =>
+        tileX >= 0 && tileY >= 0 && tileX < Width && tileY < Height;
+
+    private bool IsFarmLandAt(int tileX, int tileY, int layer)
+    {
+        if (!InBounds(tileX, tileY))
+        {
+            return false;
+        }
+
+        return TileIds.IsFarmLand(GetTileId(tileX, tileY, layer));
+    }
+
+    private void RefreshFarmLandNeighbors(int centerX, int centerY, int layer)
+    {
+        for (int y = centerY - 1; y <= centerY + 1; y++)
+        {
+            for (int x = centerX - 1; x <= centerX + 1; x++)
+            {
+                if (!InBounds(x, y) || !IsFarmLandAt(x, y, layer))
+                {
+                    continue;
+                }
+
+                bool n = IsFarmLandAt(x, y - 1, layer);
+                bool e = IsFarmLandAt(x + 1, y, layer);
+                bool s = IsFarmLandAt(x, y + 1, layer);
+                bool w = IsFarmLandAt(x - 1, y, layer);
+                int tileId = SelectFarmLandTile(n, e, s, w);
+                LayerGids[layer][y * Width + x] = TilesetFirstGid + tileId;
+            }
+        }
+    }
+
+    /// <summary>Pick farmland autotile from 4-way neighbors (N=1, E=2, S=4, W=8).</summary>
+    private static int SelectFarmLandTile(bool n, bool e, bool s, bool w)
+    {
+        int mask = (n ? 1 : 0) | (e ? 2 : 0) | (s ? 4 : 0) | (w ? 8 : 0);
+        return mask switch
+        {
+            0 => TileIds.FarmLandCenter,
+            1 => TileIds.FarmLandBase + 7,
+            2 => TileIds.FarmLandBase + 5,
+            4 => TileIds.FarmLandBase + 1,
+            8 => TileIds.FarmLandBase + 3,
+            3 => TileIds.FarmLandBase + 8,
+            6 => TileIds.FarmLandBase + 2,
+            12 => TileIds.FarmLandBase + 6,
+            9 => TileIds.FarmLandBase + 0,
+            5 => TileIds.FarmLandCenter,
+            10 => TileIds.FarmLandCenter,
+            7 => TileIds.FarmLandCenter,
+            11 => TileIds.FarmLandCenter,
+            13 => TileIds.FarmLandCenter,
+            14 => TileIds.FarmLandCenter,
+            15 => TileIds.FarmLandCenter,
+            _ => TileIds.FarmLandCenter,
+        };
+    }
 
     private static (int columns, string imagePath) LoadTsx(string tsxPath)
     {
