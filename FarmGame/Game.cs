@@ -36,44 +36,71 @@ public class Game
             startPos);
 
         var hotbar = new Hotbar(player.WalkTexture, player.ActionsTexture, decorTexture);
+        var assets = new AssetLibrary();
+        var assetEditor = new AssetEditorUi();
 
         while (!Raylib.WindowShouldClose())
         {
             float dt = Raylib.GetFrameTime();
-            hotbar.Update();
-            player.Update(dt, worldW, worldH, hotbar.SelectedTool);
-            crops.Update(dt);
 
-            if (player.ConsumeToolStrike())
+            if (Raylib.IsKeyPressed(KeyboardKey.KEY_TAB))
             {
-                (int tileX, int tileY) = player.GetTargetTile(scale, map);
-                map.TryHoe(tileX, tileY);
+                assetEditor.Toggle();
             }
 
-            if (player.ConsumePlantRequest(out PlayerTool seedTool))
-            {
-                CropType? cropType = CropTypeInfo.FromTool(seedTool);
-                if (cropType != null)
-                {
-                    (int tileX, int tileY) = player.GetTargetTile(scale, map);
-                    crops.TryPlant(tileX, tileY, cropType.Value, map);
-                }
-            }
+            assetEditor.Update(ScreenWidth, ScreenHeight);
 
             Vector2 offset = ComputeCameraOffset(map.PixelWidth, map.PixelHeight, scale, ScreenWidth, ScreenHeight, player.WorldPosition);
+
+            if (!assetEditor.IsOpen)
+            {
+                hotbar.Update();
+                player.Update(dt, worldW, worldH, hotbar.SelectedTool);
+                crops.Update(dt);
+
+                if (player.ConsumeToolStrike())
+                {
+                    (int tileX, int tileY) = player.GetTargetTile(scale, map);
+                    map.TryHoe(tileX, tileY);
+                }
+
+                if (player.ConsumePlantRequest(out PlayerTool seedTool))
+                {
+                    CropType? cropType = CropTypeInfo.FromTool(seedTool);
+                    if (cropType != null)
+                    {
+                        (int tileX, int tileY) = player.GetTargetTile(scale, map);
+                        crops.TryPlant(tileX, tileY, cropType.Value, map);
+                    }
+                }
+            }
+            else
+            {
+                crops.Update(dt);
+                assetEditor.TryPlaceAtScreen(Raylib.GetMousePosition(), assets, scale, offset);
+            }
 
             Raylib.BeginDrawing();
             Raylib.ClearBackground(new Color(24, 26, 32, 255));
 
             map.Draw(scale, offset);
             crops.Draw(map, scale, offset, decorTexture);
+            assets.Draw(scale, offset);
             player.Draw(scale, offset);
+            assetEditor.DrawPlacementPreview(scale, offset);
             hotbar.Draw(ScreenWidth, ScreenHeight);
+            assetEditor.Draw(ScreenWidth, ScreenHeight);
+
+            if (!assetEditor.IsOpen)
+            {
+                UiText.DrawText("Tab: Asset Editor", 12, 10, 16, new Color(150, 155, 170, 255));
+            }
 
             Raylib.EndDrawing();
         }
 
         player.Unload();
+        assets.Unload();
         Raylib.UnloadTexture(decorTexture);
         map.Unload();
         UiText.Unload();
