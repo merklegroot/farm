@@ -1,0 +1,8 @@
+## Build results
+[Bb]in/
+[Oo]bj/
+.vs/
+.idea/
+
+## OS / tooling
+.DS_Store

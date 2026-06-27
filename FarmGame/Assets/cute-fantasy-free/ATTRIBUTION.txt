@@ -1,0 +1,28 @@
+Cute Fantasy RPG — 16x16 top-down pixel art asset pack (FREE version)
+================================================================================
+
+Author: Kenmi
+Source: https://kenmi-art.itch.io/cute-fantasy-rpg
+Download: Cute_Fantasy_Free.zip
+
+Local path in this repo:
+  FarmGame/Assets/cute-fantasy-free/Cute_Fantasy_Free/
+
+Credit (required; include in game credits and/or docs):
+  Kenmi — https://kenmi-art.itch.io/cute-fantasy-rpg
+
+License — Free Version (from the pack's read_me.txt and the itch.io page):
+  - You may use these assets in non-commercial projects.
+  - You may modify the assets.
+  - You may NOT redistribute or resell this asset pack, even if modified.
+
+Pack contents (this install):
+  Tiles/              Grass, water, path, cliff, beach, farmland
+  Player/             Player.png, Player_Actions.png
+  Enemies/            Skeleton, Slime_Green
+  Animals/            Chicken, Cow, Pig, Sheep
+  Outdoor decoration/ Trees, house, bridge, fences, chest, props sheet
+
+This file is a convenience summary, not a substitute for the license in
+read_me.txt or on the download page. Keep this file with any copy of these
+assets in distributions that include them.
