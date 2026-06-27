@@ -10,8 +10,9 @@ public sealed class Player
     private const int ActionFrameSize = 48;
     private const float MoveSpeed = 96f;
     private const float WalkFrameDuration = 0.1f;
-    private const float ActionDuration = 0.55f;
-    private const float ActionFrameDuration = ActionDuration / 2f;
+    private const float ActionDuration = 0.6f;
+    private static readonly int[] ActionFrameSequence = [0, 1];
+    private static readonly float ActionFrameDuration = ActionDuration / ActionFrameSequence.Length;
 
     private static readonly int[] WalkFrameCycle = [0, 1, 2, 3, 4, 5];
 
@@ -144,16 +145,16 @@ public sealed class Player
     {
         int sideRow = PlayerToolInfo.ActionSideRow(_activeTool);
         int row = sideRow + ActionFacingOffset(_facing);
-        int actionFrame = (int)(_actionTimer / ActionFrameDuration) % 2;
-
-        int column = _facing switch
-        {
-            Facing.Side when _flipX => 0,
-            Facing.Side => 1,
-            _ => actionFrame,
-        };
+        int sequenceIndex = Math.Min((int)(_actionTimer / ActionFrameDuration), ActionFrameSequence.Length - 1);
+        int column = ActionFrameSequence[sequenceIndex];
 
         var src = new Rectangle(column * ActionFrameSize, row * ActionFrameSize, ActionFrameSize, ActionFrameSize);
+        if (_facing == Facing.Side && _flipX)
+        {
+            src.X += ActionFrameSize;
+            src.Width = -ActionFrameSize;
+        }
+
         DrawSprite(_actionsTexture, src, ActionFrameSize, ActionFrameSize, mapScale, mapOffset);
     }
 
