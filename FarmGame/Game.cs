@@ -7,10 +7,9 @@ public class Game
 {
     private const int ScreenWidth = 1280;
     private const int ScreenHeight = 720;
+    private const int MapScale = 3;
     private const string Title = "Farm";
     private const string MapTmxRelativePath = "../../../../tiled/tilemap.tmx";
-    private const string PlayerSpriteRelativePath = "../../../Assets/cute-fantasy-free/Cute_Fantasy_Free/Player/Player.png";
-    private const string PlayerActionsRelativePath = "../../../Assets/cute-fantasy-free/Cute_Fantasy_Free/Player/Player_Actions.png";
 
     public void Run()
     {
@@ -21,9 +20,7 @@ public class Game
         string mapPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, MapTmxRelativePath));
         TileMap map = TileMap.LoadFromTmx(mapPath);
 
-        float scale = ComputeIntegerScale(map.PixelWidth, map.PixelHeight, ScreenWidth, ScreenHeight);
-        Vector2 offset = ComputeCenteredOffset(map.PixelWidth, map.PixelHeight, scale, ScreenWidth, ScreenHeight);
-
+        float scale = MapScale;
         float worldW = map.PixelWidth * scale;
         float worldH = map.PixelHeight * scale;
         Vector2 startPos = new Vector2(worldW * 0.5f, worldH * 0.5f);
@@ -42,6 +39,8 @@ public class Game
             hotbar.Update();
             player.Update(dt, worldW, worldH, hotbar.SelectedTool);
 
+            Vector2 offset = ComputeCameraOffset(map.PixelWidth, map.PixelHeight, scale, ScreenWidth, ScreenHeight, player.WorldPosition);
+
             Raylib.BeginDrawing();
             Raylib.ClearBackground(new Color(24, 26, 32, 255));
 
@@ -58,17 +57,32 @@ public class Game
         Raylib.CloseWindow();
     }
 
-    private static float ComputeIntegerScale(float mapPixelW, float mapPixelH, int screenW, int screenH)
-    {
-        int scaleX = Math.Max(1, (int)MathF.Floor(screenW / mapPixelW));
-        int scaleY = Math.Max(1, (int)MathF.Floor(screenH / mapPixelH));
-        return Math.Min(scaleX, scaleY);
-    }
-
-    private static Vector2 ComputeCenteredOffset(float mapPixelW, float mapPixelH, float scale, int screenW, int screenH)
+    private static Vector2 ComputeCameraOffset(float mapPixelW, float mapPixelH, float scale, int screenW, int screenH, Vector2 focusWorldPos)
     {
         float worldW = mapPixelW * scale;
         float worldH = mapPixelH * scale;
-        return new Vector2((screenW - worldW) * 0.5f, (screenH - worldH) * 0.5f);
+
+        float offsetX = screenW * 0.5f - focusWorldPos.X;
+        float offsetY = screenH * 0.5f - focusWorldPos.Y;
+
+        if (worldW <= screenW)
+        {
+            offsetX = (screenW - worldW) * 0.5f;
+        }
+        else
+        {
+            offsetX = Math.Clamp(offsetX, screenW - worldW, 0f);
+        }
+
+        if (worldH <= screenH)
+        {
+            offsetY = (screenH - worldH) * 0.5f;
+        }
+        else
+        {
+            offsetY = Math.Clamp(offsetY, screenH - worldH, 0f);
+        }
+
+        return new Vector2(offsetX, offsetY);
     }
 }
