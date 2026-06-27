@@ -1,0 +1,14 @@
+# Combined tileset — 16x16 cells, row-major (left-to-right, top-to-bottom)
+# Output: tileset.png
+
+Grass_Middle.png: tiles 0–0 (1x1 grid from source)
+Water_Middle.png: tiles 1–1 (1x1 grid from source)
+Water_Tile.png: tiles 2–19 (3x6 grid from source)
+Path_Middle.png: tiles 20–20 (1x1 grid from source)
+Path_Tile.png: tiles 21–38 (3x6 grid from source)
+Beach_Tile.png: tiles 39–53 (5x3 grid from source)
+Cliff_Tile.png: tiles 54–71 (3x6 grid from source)
+FarmLand_Tile.png: tiles 72–80 (3x3 grid from source)
+
+Total tiles: 81
+Atlas size: 144x144 (9 columns x 9 rows)
