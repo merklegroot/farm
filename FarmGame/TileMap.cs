@@ -200,30 +200,38 @@ public sealed class TileMap
         }
     }
 
-    /// <summary>Pick farmland autotile from 4-way neighbors (N=1, E=2, S=4, W=8).</summary>
+    /// <summary>
+    /// 3×3 farmland blob in tileset indices 72–80:
+    ///   72 73 74
+    ///   75 76 77
+    ///   78 79 80
+    /// Neighbor mask: N=1, E=2, S=4, W=8 (bit set when that neighbor is also farmland).
+    /// </summary>
     private static int SelectFarmLandTile(bool n, bool e, bool s, bool w)
     {
         int mask = (n ? 1 : 0) | (e ? 2 : 0) | (s ? 4 : 0) | (w ? 8 : 0);
-        return mask switch
+        int offset = mask switch
         {
-            0 => TileIds.FarmLandCenter,
-            1 => TileIds.FarmLandBase + 7,
-            2 => TileIds.FarmLandBase + 5,
-            4 => TileIds.FarmLandBase + 1,
-            8 => TileIds.FarmLandBase + 3,
-            3 => TileIds.FarmLandBase + 8,
-            6 => TileIds.FarmLandBase + 2,
-            12 => TileIds.FarmLandBase + 6,
-            9 => TileIds.FarmLandBase + 0,
-            5 => TileIds.FarmLandCenter,
-            10 => TileIds.FarmLandCenter,
-            7 => TileIds.FarmLandCenter,
-            11 => TileIds.FarmLandCenter,
-            13 => TileIds.FarmLandCenter,
-            14 => TileIds.FarmLandCenter,
-            15 => TileIds.FarmLandCenter,
-            _ => TileIds.FarmLandCenter,
+            0 => 4,
+            1 => 7,
+            2 => 3,
+            3 => 6,
+            4 => 1,
+            5 => 3,
+            6 => 0,
+            7 => 7,
+            8 => 5,
+            9 => 8,
+            10 => 1,
+            11 => 3,
+            12 => 2,
+            13 => 5,
+            14 => 1,
+            15 => 4,
+            _ => 4,
         };
+
+        return TileIds.FarmLandBase + offset;
     }
 
     private static (int columns, string imagePath) LoadTsx(string tsxPath)
