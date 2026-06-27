@@ -34,6 +34,13 @@ public sealed class GameAsset
         DrawInternal(screenPosition, scale);
     }
 
+    public void DrawScreenTopLeft(Vector2 screenTopLeft, float scale)
+    {
+        var src = new Rectangle(0, 0, _width, _height);
+        var dest = new Rectangle(screenTopLeft.X, screenTopLeft.Y, _width * scale, _height * scale);
+        Raylib.DrawTexturePro(_texture, src, dest, Vector2.Zero, 0f, Color.WHITE);
+    }
+
     public void Unload()
     {
         Raylib.UnloadTexture(_texture);

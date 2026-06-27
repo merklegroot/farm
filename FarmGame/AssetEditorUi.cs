@@ -45,6 +45,7 @@ public sealed class AssetEditorUi
     private Rectangle _canvasRect;
     private Rectangle _nameFieldRect;
     private Rectangle _assetListRect;
+    private Rectangle _newAssetButtonRect;
     private IReadOnlyList<string> _savedNames = [];
 
     public bool IsOpen => _isOpen;
@@ -108,6 +109,7 @@ public sealed class AssetEditorUi
 
         HandlePropertyButtons(assets);
         HandleButtons(assets);
+        HandleNewAssetButton(assets);
         HandleAssetList(assets);
         HandleAssetListScroll();
 
@@ -248,9 +250,16 @@ public sealed class AssetEditorUi
             canvasBlock);
         _assetListRect = new Rectangle(
             _panelRect.X + PanelPadding,
-            _canvasRect.Y + _canvasRect.Height + 12 + 36 + 36 + 18 + 28,
+            _canvasRect.Y + _canvasRect.Height + 12 + 36 + 36 + 28,
             PanelWidth - PanelPadding * 2,
             AssetListVisibleRows * AssetRowHeight);
+
+        float assetHeaderY = _canvasRect.Y + _canvasRect.Height + 12 + 36 + 36;
+        _newAssetButtonRect = new Rectangle(
+            _panelRect.X + PanelWidth - PanelPadding - 52,
+            assetHeaderY - 4,
+            52,
+            22);
     }
 
     private void DrawDimensionRow(int x, ref int y)
@@ -332,10 +341,9 @@ public sealed class AssetEditorUi
     private void DrawAssetList(int x, int y)
     {
         UiText.DrawText("Assets", x, y, 14, new Color(150, 155, 170, 255));
-        DrawButton(new Rectangle(x + PanelWidth - PanelPadding * 2 - 52, y - 4, 52, 22), "New", false);
+        DrawButton(_newAssetButtonRect, "New", false);
 
         y += 28;
-        _assetListRect = new Rectangle(x, y, PanelWidth - PanelPadding * 2, AssetListVisibleRows * AssetRowHeight);
         Raylib.DrawRectangleRec(_assetListRect, new Color(12, 13, 18, 255));
         Raylib.DrawRectangleLinesEx(_assetListRect, 1f, new Color(70, 75, 90, 255));
 
@@ -438,7 +446,6 @@ public sealed class AssetEditorUi
         Vector2 mouse = Raylib.GetMousePosition();
         int x = (int)_panelRect.X + PanelPadding;
         int y = (int)(_canvasRect.Y + _canvasRect.Height + 12 + 36);
-        int assetHeaderY = (int)(_canvasRect.Y + _canvasRect.Height + 12 + 36 + 36 + 18);
 
         if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x, y, 68, 28)))
         {
@@ -463,10 +470,23 @@ public sealed class AssetEditorUi
             _isOpen = false;
             _isPlacing = false;
         }
-        else if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x + PanelWidth - PanelPadding * 2 - 52, assetHeaderY - 4, 52, 22)))
+    }
+
+    private void HandleNewAssetButton(AssetLibrary assets)
+    {
+        if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
         {
-            BeginNewAsset(assets);
+            return;
         }
+
+        Vector2 mouse = Raylib.GetMousePosition();
+        if (!Raylib.CheckCollisionPointRec(mouse, _newAssetButtonRect))
+        {
+            return;
+        }
+
+        BeginNewAsset(assets);
+        SetStatus("New asset");
     }
 
     private void HandleAssetList(AssetLibrary assets)
@@ -620,6 +640,7 @@ public sealed class AssetEditorUi
         ClearCanvas();
         _pixelsDirty = false;
         _isPlacing = false;
+        _nameFocused = false;
     }
 
     private void SelectAsset(string name, AssetLibrary? assets, bool persistPending)

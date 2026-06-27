@@ -22,6 +22,18 @@ public sealed class AssetLibrary
         _assets[name] = new GameAsset(definition);
     }
 
+    public bool TryGetAsset(string name, out GameAsset asset)
+    {
+        if (_assets.TryGetValue(name, out GameAsset? found))
+        {
+            asset = found;
+            return true;
+        }
+
+        asset = null!;
+        return false;
+    }
+
     public void Place(string name, Vector2 worldPosition)
     {
         if (!_assets.ContainsKey(name))

@@ -5,9 +5,6 @@ namespace FarmGame;
 
 public sealed class CropField
 {
-    private const float StageDuration = 5f;
-    private const int MaxStage = 3;
-
     private readonly int _width;
     private readonly int _height;
     private readonly Crop?[] _crops;
@@ -19,30 +16,7 @@ public sealed class CropField
         _crops = new Crop?[mapWidth * mapHeight];
     }
 
-    public void Update(float deltaTime)
-    {
-        for (int i = 0; i < _crops.Length; i++)
-        {
-            if (_crops[i] is not Crop crop)
-            {
-                continue;
-            }
-
-            if (crop.Stage >= MaxStage)
-            {
-                continue;
-            }
-
-            crop.StageTimer += deltaTime;
-            if (crop.StageTimer >= StageDuration)
-            {
-                crop.StageTimer -= StageDuration;
-                crop.Stage++;
-            }
-        }
-    }
-
-    public bool TryPlant(int tileX, int tileY, CropType type, TileMap map)
+    public bool TryPlant(int tileX, int tileY, CropType type, TileMap map, AssetLibrary assets)
     {
         if (!InBounds(tileX, tileY) || _crops[Index(tileX, tileY)] != null)
         {
@@ -54,12 +28,21 @@ public sealed class CropField
             return false;
         }
 
-        _crops[Index(tileX, tileY)] = new Crop { Type = type, Stage = 0, StageTimer = 0f };
+        string assetName = CropTypeInfo.SeedAssetName(type);
+        if (!assets.TryGetAsset(assetName, out _))
+        {
+            return false;
+        }
+
+        _crops[Index(tileX, tileY)] = new Crop { Type = type };
         return true;
     }
 
-    public void Draw(TileMap map, float scale, Vector2 offset, Texture2D decorTexture)
+    public void Draw(TileMap map, float scale, Vector2 offset, AssetLibrary assets)
     {
+        float tileScreenW = map.TileWidth * scale;
+        float tileScreenH = map.TileHeight * scale;
+
         for (int y = 0; y < _height; y++)
         {
             for (int x = 0; x < _width; x++)
@@ -70,11 +53,17 @@ public sealed class CropField
                     continue;
                 }
 
-                Rectangle src = CropSprites.GrowthStage(crop.Type, crop.Stage);
-                float destX = offset.X + x * map.TileWidth * scale;
-                float destY = offset.Y + y * map.TileHeight * scale;
-                var dest = new Rectangle(destX, destY, map.TileWidth * scale, map.TileHeight * scale);
-                Raylib.DrawTexturePro(decorTexture, src, dest, Vector2.Zero, 0f, Color.WHITE);
+                string assetName = CropTypeInfo.SeedAssetName(crop.Type);
+                if (!assets.TryGetAsset(assetName, out GameAsset asset))
+                {
+                    continue;
+                }
+
+                float assetScreenW = asset.Width * scale;
+                float assetScreenH = asset.Height * scale;
+                float destX = offset.X + x * tileScreenW + (tileScreenW - assetScreenW) * 0.5f;
+                float destY = offset.Y + y * tileScreenH + (tileScreenH - assetScreenH) * 0.5f;
+                asset.DrawScreenTopLeft(new Vector2(destX, destY), scale);
             }
         }
     }
@@ -87,7 +76,5 @@ public sealed class CropField
     private sealed class Crop
     {
         public required CropType Type { get; init; }
-        public int Stage;
-        public float StageTimer;
     }
 }

@@ -14,4 +14,11 @@ public static class CropTypeInfo
         PlayerTool.WheatSeeds => CropType.Wheat,
         _ => null,
     };
+
+    public static string SeedAssetName(CropType type) => type switch
+    {
+        CropType.Carrot => "Seeds",
+        CropType.Wheat => "Seeds",
+        _ => "Seeds",
+    };
 }

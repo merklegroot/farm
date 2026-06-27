@@ -57,7 +57,6 @@ public class Game
             {
                 hotbar.Update();
                 player.Update(dt, worldW, worldH, hotbar.SelectedTool);
-                crops.Update(dt);
 
                 if (player.ConsumeToolStrike())
                 {
@@ -71,13 +70,12 @@ public class Game
                     if (cropType != null)
                     {
                         (int tileX, int tileY) = player.GetTargetTile(scale, map);
-                        crops.TryPlant(tileX, tileY, cropType.Value, map);
+                        crops.TryPlant(tileX, tileY, cropType.Value, map, assets);
                     }
                 }
             }
             else
             {
-                crops.Update(dt);
                 assetEditor.TryPlaceAtScreen(Raylib.GetMousePosition(), assets, scale, offset);
             }
 
@@ -85,7 +83,7 @@ public class Game
             Raylib.ClearBackground(new Color(24, 26, 32, 255));
 
             map.Draw(scale, offset);
-            crops.Draw(map, scale, offset, decorTexture);
+            crops.Draw(map, scale, offset, assets);
             assets.Draw(scale, offset);
             player.Draw(scale, offset);
             assetEditor.DrawPlacementPreview(scale, offset);
