@@ -5,7 +5,6 @@ namespace FarmGame;
 
 public sealed class Hotbar
 {
-    private const int SlotCount = 5;
     private const int SlotSize = 48;
     private const int SlotPadding = 6;
     private const int BarPadding = 12;
@@ -13,21 +12,23 @@ public sealed class Hotbar
 
     private readonly Texture2D _playerTexture;
     private readonly Texture2D _actionsTexture;
+    private readonly Texture2D _decorTexture;
 
     private int _selectedIndex;
 
     public PlayerTool SelectedTool => (PlayerTool)_selectedIndex;
 
-    public Hotbar(Texture2D playerTexture, Texture2D actionsTexture, int initialSelection = 0)
+    public Hotbar(Texture2D playerTexture, Texture2D actionsTexture, Texture2D decorTexture, int initialSelection = 0)
     {
         _playerTexture = playerTexture;
         _actionsTexture = actionsTexture;
-        _selectedIndex = Math.Clamp(initialSelection, 0, SlotCount - 1);
+        _decorTexture = decorTexture;
+        _selectedIndex = Math.Clamp(initialSelection, 0, PlayerToolInfo.SlotCount - 1);
     }
 
     public void Update()
     {
-        for (int i = 0; i < SlotCount; i++)
+        for (int i = 0; i < PlayerToolInfo.SlotCount; i++)
         {
             if (Raylib.IsKeyPressed((KeyboardKey)((int)KeyboardKey.KEY_ONE + i)))
             {
@@ -37,18 +38,19 @@ public sealed class Hotbar
 
         if (Raylib.IsKeyPressed(KeyboardKey.KEY_Q))
         {
-            _selectedIndex = (_selectedIndex + SlotCount - 1) % SlotCount;
+            _selectedIndex = (_selectedIndex + PlayerToolInfo.SlotCount - 1) % PlayerToolInfo.SlotCount;
         }
 
         if (Raylib.IsKeyPressed(KeyboardKey.KEY_E))
         {
-            _selectedIndex = (_selectedIndex + 1) % SlotCount;
+            _selectedIndex = (_selectedIndex + 1) % PlayerToolInfo.SlotCount;
         }
     }
 
     public void Draw(int screenWidth, int screenHeight)
     {
-        int totalWidth = SlotCount * SlotSize + (SlotCount - 1) * SlotPadding;
+        int slotCount = PlayerToolInfo.SlotCount;
+        int totalWidth = slotCount * SlotSize + (slotCount - 1) * SlotPadding;
         int barX = (screenWidth - totalWidth) / 2 - BarPadding;
         int barY = screenHeight - BarHeight - BarPadding;
         int barW = totalWidth + BarPadding * 2;
@@ -60,7 +62,7 @@ public sealed class Hotbar
         int slotX = barX + BarPadding;
         int slotY = barY + (barH - SlotSize) / 2;
 
-        for (int i = 0; i < SlotCount; i++)
+        for (int i = 0; i < slotCount; i++)
         {
             var tool = (PlayerTool)i;
             bool selected = i == _selectedIndex;
@@ -89,19 +91,26 @@ public sealed class Hotbar
     {
         const int iconFrame = 32;
         const int actionFrame = 48;
-        float iconScale = (SlotSize - 8f) / iconFrame;
+        const int decorFrame = 16;
 
         if (tool == PlayerTool.Hands)
         {
-            var src = new Rectangle(0, 0, iconFrame, iconFrame);
-            DrawIcon(_playerTexture, src, slot, iconScale, iconFrame);
+            float iconScale = (SlotSize - 8f) / iconFrame;
+            DrawIcon(_playerTexture, new Rectangle(0, 0, iconFrame, iconFrame), slot, iconScale, iconFrame);
+            return;
+        }
+
+        if (PlayerToolInfo.IsSeed(tool))
+        {
+            CropType type = CropTypeInfo.FromTool(tool)!.Value;
+            float iconScale = (SlotSize - 8f) / decorFrame;
+            DrawIcon(_decorTexture, CropSprites.SeedBag(type), slot, iconScale, decorFrame);
             return;
         }
 
         int row = PlayerToolInfo.IconRow(tool);
-        var actionSrc = new Rectangle(0, row * actionFrame, actionFrame, actionFrame);
         float actionScale = (SlotSize - 8f) / actionFrame;
-        DrawIcon(_actionsTexture, actionSrc, slot, actionScale, actionFrame);
+        DrawIcon(_actionsTexture, new Rectangle(0, row * actionFrame, actionFrame, actionFrame), slot, actionScale, actionFrame);
     }
 
     private static void DrawIcon(Texture2D texture, Rectangle src, Rectangle slot, float scale, int frameSize)

@@ -7,10 +7,14 @@ public enum PlayerTool
     Axe = 2,
     Hoe = 3,
     WateringCan = 4,
+    CarrotSeeds = 5,
+    WheatSeeds = 6,
 }
 
 public static class PlayerToolInfo
 {
+    public static int SlotCount => 7;
+
     /// <summary>First row of this tool's block in Player_Actions.png (side-facing row).</summary>
     public static int ActionSideRow(PlayerTool tool) => tool switch
     {
@@ -21,7 +25,11 @@ public static class PlayerToolInfo
         _ => -1,
     };
 
-    public static bool HasAction(PlayerTool tool) => tool != PlayerTool.Hands;
+    public static bool HasAction(PlayerTool tool) =>
+        tool is PlayerTool.Pickaxe or PlayerTool.Axe or PlayerTool.Hoe or PlayerTool.WateringCan;
+
+    public static bool IsSeed(PlayerTool tool) =>
+        tool is PlayerTool.CarrotSeeds or PlayerTool.WheatSeeds;
 
     /// <summary>Icon source row in Player_Actions (down-facing start frame).</summary>
     public static int IconRow(PlayerTool tool) => tool switch

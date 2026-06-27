@@ -32,6 +32,8 @@ public sealed class Player
     private float _actionTimer;
     private bool _strikeApplied;
     private bool _pendingStrike;
+    private bool _pendingPlant;
+    private PlayerTool _pendingPlantTool;
 
     public Texture2D WalkTexture => _texture;
     public Texture2D ActionsTexture => _actionsTexture;
@@ -66,7 +68,11 @@ public sealed class Player
             return;
         }
 
-        if (TryStartToolUse(selectedTool))
+        if (TryStartPlant(selectedTool))
+        {
+            // Allow movement while carrying seeds; planting is handled after movement below.
+        }
+        else if (TryStartToolUse(selectedTool))
         {
             return;
         }
@@ -117,6 +123,19 @@ public sealed class Player
         return true;
     }
 
+    public bool ConsumePlantRequest(out PlayerTool seedTool)
+    {
+        if (!_pendingPlant)
+        {
+            seedTool = PlayerTool.Hands;
+            return false;
+        }
+
+        _pendingPlant = false;
+        seedTool = _pendingPlantTool;
+        return true;
+    }
+
     public (int X, int Y) GetTargetTile(float mapScale, TileMap map)
     {
         (int tileX, int tileY) = TileMap.WorldToTile(WorldPosition, mapScale, map.TileWidth, map.TileHeight);
@@ -128,6 +147,26 @@ public sealed class Player
     {
         Raylib.UnloadTexture(_texture);
         Raylib.UnloadTexture(_actionsTexture);
+    }
+
+    private bool TryStartPlant(PlayerTool selectedTool)
+    {
+        if (!PlayerToolInfo.IsSeed(selectedTool))
+        {
+            return false;
+        }
+
+        bool usePressed = Raylib.IsKeyPressed(KeyboardKey.KEY_SPACE)
+            || (Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT) && !IsMouseOverHotbar());
+
+        if (!usePressed)
+        {
+            return false;
+        }
+
+        _pendingPlant = true;
+        _pendingPlantTool = selectedTool;
+        return true;
     }
 
     private bool TryStartToolUse(PlayerTool selectedTool)
