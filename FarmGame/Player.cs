@@ -147,6 +147,10 @@ public sealed class Player
         int row = sideRow + ActionFacingOffset(_facing);
         int sequenceIndex = Math.Min((int)(_actionTimer / ActionFrameDuration), ActionFrameSequence.Length - 1);
         int column = ActionFrameSequence[sequenceIndex];
+        if (_facing == Facing.Side && _flipX)
+        {
+            column = ActionFrameSequence[ActionFrameSequence.Length - 1 - sequenceIndex];
+        }
 
         var src = new Rectangle(column * ActionFrameSize, row * ActionFrameSize, ActionFrameSize, ActionFrameSize);
         if (_facing == Facing.Side && _flipX)
