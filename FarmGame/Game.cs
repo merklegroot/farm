@@ -10,11 +10,13 @@ public class Game
     private const string Title = "Farm";
     private const string MapTmxRelativePath = "../../../../tiled/tilemap.tmx";
     private const string PlayerSpriteRelativePath = "../../../Assets/cute-fantasy-free/Cute_Fantasy_Free/Player/Player.png";
+    private const string PlayerActionsRelativePath = "../../../Assets/cute-fantasy-free/Cute_Fantasy_Free/Player/Player_Actions.png";
 
     public void Run()
     {
         Raylib.InitWindow(ScreenWidth, ScreenHeight, Title);
         Raylib.SetTargetFPS(60);
+        UiText.Load();
 
         string mapPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, MapTmxRelativePath));
         TileMap map = TileMap.LoadFromTmx(mapPath);
@@ -26,25 +28,33 @@ public class Game
         float worldH = map.PixelHeight * scale;
         Vector2 startPos = new Vector2(worldW * 0.5f, worldH * 0.5f);
 
-        string playerSpritePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, PlayerSpriteRelativePath));
-        var player = new Player(playerSpritePath, startPos);
+        string assetsBase = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../Assets/cute-fantasy-free/Cute_Fantasy_Free/Player"));
+        var player = new Player(
+            Path.Combine(assetsBase, "Player.png"),
+            Path.Combine(assetsBase, "Player_Actions.png"),
+            startPos);
+
+        var hotbar = new Hotbar(player.WalkTexture, player.ActionsTexture);
 
         while (!Raylib.WindowShouldClose())
         {
             float dt = Raylib.GetFrameTime();
-            player.Update(dt, worldW, worldH);
+            hotbar.Update();
+            player.Update(dt, worldW, worldH, hotbar.SelectedTool);
 
             Raylib.BeginDrawing();
             Raylib.ClearBackground(new Color(24, 26, 32, 255));
 
             map.Draw(scale, offset);
             player.Draw(scale, offset);
+            hotbar.Draw(ScreenWidth, ScreenHeight);
 
             Raylib.EndDrawing();
         }
 
         player.Unload();
         map.Unload();
+        UiText.Unload();
         Raylib.CloseWindow();
     }
 

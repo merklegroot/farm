@@ -7,12 +7,16 @@ public sealed class Player
 {
     private const int FrameWidth = 32;
     private const int FrameHeight = 32;
+    private const int ActionFrameSize = 48;
     private const float MoveSpeed = 96f;
     private const float WalkFrameDuration = 0.1f;
+    private const float ActionDuration = 0.55f;
+    private const float ActionFrameDuration = ActionDuration / 2f;
 
     private static readonly int[] WalkFrameCycle = [0, 1, 2, 3, 4, 5];
 
     private readonly Texture2D _texture;
+    private readonly Texture2D _actionsTexture;
 
     public Vector2 WorldPosition { get; private set; }
 
@@ -22,15 +26,41 @@ public sealed class Player
     private int _animFrame;
     private float _animTimer;
 
-    public Player(string spritePath, Vector2 startWorldPosition)
+    private bool _isUsingTool;
+    private PlayerTool _activeTool;
+    private float _actionTimer;
+
+    public Texture2D WalkTexture => _texture;
+    public Texture2D ActionsTexture => _actionsTexture;
+
+    public Player(string spritePath, string actionsPath, Vector2 startWorldPosition)
     {
         _texture = Raylib.LoadTexture(spritePath);
+        _actionsTexture = Raylib.LoadTexture(actionsPath);
         Raylib.SetTextureFilter(_texture, TextureFilter.TEXTURE_FILTER_POINT);
+        Raylib.SetTextureFilter(_actionsTexture, TextureFilter.TEXTURE_FILTER_POINT);
         WorldPosition = startWorldPosition;
     }
 
-    public void Update(float deltaTime, float worldWidth, float worldHeight)
+    public void Update(float deltaTime, float worldWidth, float worldHeight, PlayerTool selectedTool)
     {
+        if (_isUsingTool)
+        {
+            _actionTimer += deltaTime;
+            if (_actionTimer >= ActionDuration)
+            {
+                _isUsingTool = false;
+            }
+
+            _velocity = Vector2.Zero;
+            return;
+        }
+
+        if (TryStartToolUse(selectedTool))
+        {
+            return;
+        }
+
         Vector2 input = ReadMoveInput();
         bool moving = input != Vector2.Zero;
 
@@ -57,25 +87,87 @@ public sealed class Player
 
     public void Draw(float mapScale, Vector2 mapOffset)
     {
-        bool moving = _velocity != Vector2.Zero;
-        int row = (moving ? 3 : 0) + (int)_facing;
-        int frame = moving ? WalkFrameCycle[_animFrame] : 0;
+        if (_isUsingTool)
+        {
+            DrawToolAction(mapScale, mapOffset);
+            return;
+        }
 
-        var src = new Rectangle(frame * FrameWidth, row * FrameHeight, FrameWidth, FrameHeight);
-        float destW = FrameWidth * mapScale;
-        float destH = FrameHeight * mapScale;
-
-        Vector2 screenPos = mapOffset + WorldPosition;
-        float destX = screenPos.X - destW * 0.5f;
-        float destY = screenPos.Y - destH * 0.5f;
-        var dest = new Rectangle(destX, destY, _flipX ? -destW : destW, destH);
-
-        Raylib.DrawTexturePro(_texture, src, dest, Vector2.Zero, 0f, Color.WHITE);
+        DrawWalkSprite(mapScale, mapOffset);
     }
 
     public void Unload()
     {
         Raylib.UnloadTexture(_texture);
+        Raylib.UnloadTexture(_actionsTexture);
+    }
+
+    private bool TryStartToolUse(PlayerTool selectedTool)
+    {
+        if (!PlayerToolInfo.HasAction(selectedTool))
+        {
+            return false;
+        }
+
+        bool usePressed = Raylib.IsKeyPressed(KeyboardKey.KEY_SPACE)
+            || (Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT) && !IsMouseOverHotbar());
+
+        if (!usePressed)
+        {
+            return false;
+        }
+
+        _isUsingTool = true;
+        _activeTool = selectedTool;
+        _actionTimer = 0f;
+        _velocity = Vector2.Zero;
+        return true;
+    }
+
+    private void DrawWalkSprite(float mapScale, Vector2 mapOffset)
+    {
+        bool moving = _velocity != Vector2.Zero;
+        int row = (moving ? 3 : 0) + (int)_facing;
+        int frame = moving ? WalkFrameCycle[_animFrame] : 0;
+
+        var src = new Rectangle(frame * FrameWidth, row * FrameHeight, FrameWidth, FrameHeight);
+        if (_flipX)
+        {
+            src.X += FrameWidth;
+            src.Width = -FrameWidth;
+        }
+
+        DrawSprite(_texture, src, FrameWidth, FrameHeight, mapScale, mapOffset);
+    }
+
+    private void DrawToolAction(float mapScale, Vector2 mapOffset)
+    {
+        int sideRow = PlayerToolInfo.ActionSideRow(_activeTool);
+        int row = sideRow + ActionFacingOffset(_facing);
+        int actionFrame = (int)(_actionTimer / ActionFrameDuration) % 2;
+
+        int column = _facing switch
+        {
+            Facing.Side when _flipX => 0,
+            Facing.Side => 1,
+            _ => actionFrame,
+        };
+
+        var src = new Rectangle(column * ActionFrameSize, row * ActionFrameSize, ActionFrameSize, ActionFrameSize);
+        DrawSprite(_actionsTexture, src, ActionFrameSize, ActionFrameSize, mapScale, mapOffset);
+    }
+
+    private void DrawSprite(Texture2D texture, Rectangle src, int frameW, int frameH, float mapScale, Vector2 mapOffset)
+    {
+        float destW = frameW * mapScale;
+        float destH = frameH * mapScale;
+
+        Vector2 screenPos = mapOffset + WorldPosition;
+        float destX = screenPos.X - destW * 0.5f;
+        float destY = screenPos.Y - destH * 0.5f;
+        var dest = new Rectangle(destX, destY, destW, destH);
+
+        Raylib.DrawTexturePro(texture, src, dest, Vector2.Zero, 0f, Color.WHITE);
     }
 
     private void UpdateFacing(Vector2 direction)
@@ -111,6 +203,13 @@ public sealed class Player
         _animFrame = (_animFrame + 1) % WalkFrameCycle.Length;
     }
 
+    private static bool IsMouseOverHotbar()
+    {
+        const int barHeight = 72;
+        const int barPadding = 12;
+        return Raylib.GetMouseY() >= Raylib.GetScreenHeight() - barHeight - barPadding * 2;
+    }
+
     private static Vector2 ReadMoveInput()
     {
         float x = 0f;
@@ -144,10 +243,18 @@ public sealed class Player
         return Vector2.Normalize(new Vector2(x, y));
     }
 
+    private static int ActionFacingOffset(Facing facing) => facing switch
+    {
+        Facing.Side => 0,
+        Facing.Down => 1,
+        Facing.Up => 2,
+        _ => 1,
+    };
+
     private enum Facing
     {
         Down = 0,
         Side = 1,
-        Up = 2
+        Up = 2,
     }
 }
