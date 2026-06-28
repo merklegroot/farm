@@ -61,8 +61,8 @@ public sealed class AssetEditorUi
     private int _moveGrabOffsetY;
     private int _originalSelX;
     private int _originalSelY;
-    private string? _savedAssetName;
-    private string? _selectedAssetName;
+    private string? _savedFileKey;
+    private string? _selectedFileKey;
     private string _statusMessage = "";
     private float _statusTimer;
     private int _assetListScroll;
@@ -71,6 +71,7 @@ public sealed class AssetEditorUi
     private Rectangle _nameFieldRect;
     private Rectangle _assetListRect;
     private Rectangle _newAssetButtonRect;
+    private Rectangle _cloneAssetButtonRect;
     private Rectangle _brushToolRect;
     private Rectangle _selectToolRect;
     private Rectangle _paletteRect;
@@ -96,9 +97,9 @@ public sealed class AssetEditorUi
         _isPlacing = false;
         RefreshAssetList();
 
-        if (_selectedAssetName != null && _savedNames.Contains(_selectedAssetName, StringComparer.OrdinalIgnoreCase))
+        if (_selectedFileKey != null && _savedNames.Contains(_selectedFileKey, StringComparer.OrdinalIgnoreCase))
         {
-            SelectAsset(_selectedAssetName, assets, persistPending: false);
+            SelectAsset(_selectedFileKey, assets, persistPending: false);
             return;
         }
 
@@ -142,6 +143,7 @@ public sealed class AssetEditorUi
         HandlePropertyButtons(assets);
         HandleButtons(assets);
         HandleNewAssetButton(assets);
+        HandleCloneAssetButton(assets);
         HandleAssetList(assets);
         HandleAssetListScroll();
         HandleToolButtons();
@@ -318,6 +320,11 @@ public sealed class AssetEditorUi
             AssetListVisibleRows * AssetRowHeight);
 
         float assetHeaderY = actionY + 36;
+        _cloneAssetButtonRect = new Rectangle(
+            _panelRect.X + PanelWidth - PanelPadding - 52 - 4 - 52,
+            assetHeaderY - 4,
+            52,
+            22);
         _newAssetButtonRect = new Rectangle(
             _panelRect.X + PanelWidth - PanelPadding - 52,
             assetHeaderY - 4,
@@ -482,6 +489,7 @@ public sealed class AssetEditorUi
     private void DrawAssetList(int x, int y)
     {
         UiText.DrawText("Assets", x, y, 14, new Color(150, 155, 170, 255));
+        DrawButton(_cloneAssetButtonRect, "Clone", false);
         DrawButton(_newAssetButtonRect, "New", false);
 
         y += 28;
@@ -506,7 +514,7 @@ public sealed class AssetEditorUi
             }
 
             string name = _savedNames[index];
-            bool selected = string.Equals(name, _selectedAssetName, StringComparison.OrdinalIgnoreCase);
+            bool selected = string.Equals(name, _selectedFileKey, StringComparison.OrdinalIgnoreCase);
             var rowRect = new Rectangle(_assetListRect.X, _assetListRect.Y + row * AssetRowHeight, _assetListRect.Width, AssetRowHeight);
             Raylib.DrawRectangleRec(rowRect, selected ? new Color(58, 62, 78, 255) : new Color(32, 35, 42, 255));
             if (selected)
@@ -627,6 +635,55 @@ public sealed class AssetEditorUi
 
         BeginNewAsset(assets);
         SetStatus("New asset");
+    }
+
+    private void HandleCloneAssetButton(AssetLibrary assets)
+    {
+        if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
+        {
+            return;
+        }
+
+        Vector2 mouse = Raylib.GetMousePosition();
+        if (!Raylib.CheckCollisionPointRec(mouse, _cloneAssetButtonRect))
+        {
+            return;
+        }
+
+        CloneCurrentAsset(assets);
+    }
+
+    private void CloneCurrentAsset(AssetLibrary assets)
+    {
+        PersistCurrent(assets);
+
+        string sourceName = _nameField.Text.Trim();
+        if (sourceName.Length == 0)
+        {
+            sourceName = _savedFileKey ?? "";
+        }
+
+        if (DefinedAssetStore.SanitizeFileName(sourceName).Length == 0)
+        {
+            SetStatus("Enter a name to clone");
+            return;
+        }
+
+        try
+        {
+            string cloneName = DefinedAssetStore.SuggestCloneName(sourceName);
+            PixelAssetDefinition definition = BuildDefinition();
+            SavedAssetFile file = SavedAssetFile.FromDefinition(cloneName, definition);
+            string fileKey = DefinedAssetStore.SaveAsset(file);
+            assets.DefineOrReplace(cloneName, definition);
+            RefreshAssetList();
+            SelectAsset(fileKey, assets, persistPending: false);
+            SetStatus($"Cloned to '{cloneName}'");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(ex.Message);
+        }
     }
 
     private void HandleAssetList(AssetLibrary assets)
@@ -980,27 +1037,21 @@ public sealed class AssetEditorUi
 
     private void CommitNameChange(AssetLibrary assets)
     {
-        string newName = DefinedAssetStore.SanitizeFileName(_nameField.Text);
-        if (newName.Length == 0)
+        string newName = _nameField.Text.Trim();
+        if (DefinedAssetStore.SanitizeFileName(newName).Length == 0)
         {
             return;
         }
 
-        _nameField.SetText(newName);
-
-        if (string.Equals(newName, _savedAssetName, StringComparison.OrdinalIgnoreCase))
+        string newFileKey = DefinedAssetStore.ToAssetFileName(newName);
+        if (string.Equals(newFileKey, _savedFileKey, StringComparison.OrdinalIgnoreCase))
         {
             return;
-        }
-
-        if (_savedAssetName != null && !string.Equals(newName, _savedAssetName, StringComparison.OrdinalIgnoreCase))
-        {
-            DefinedAssetStore.DeleteAsset(_savedAssetName);
         }
 
         PersistCurrent(assets);
         RefreshAssetList();
-        _selectedAssetName = newName;
+        _selectedFileKey = newFileKey;
         EnsureSelectedAssetVisible();
     }
 
@@ -1013,8 +1064,8 @@ public sealed class AssetEditorUi
 
         string name = DefinedAssetStore.SuggestNewAssetName();
         _nameField.SetText(name);
-        _savedAssetName = null;
-        _selectedAssetName = null;
+        _savedFileKey = null;
+        _selectedFileKey = null;
         _width = 16;
         _height = 16;
         _pixels = new Color[16 * 16];
@@ -1033,10 +1084,11 @@ public sealed class AssetEditorUi
         }
 
         SavedAssetFile file = DefinedAssetStore.LoadAsset(name);
+        string fileKey = DefinedAssetStore.ResolveAssetFileStem(name);
         PixelAssetDefinition definition = file.ToDefinition();
         _nameField.SetText(file.Name);
-        _savedAssetName = file.Name;
-        _selectedAssetName = file.Name;
+        _savedFileKey = fileKey;
+        _selectedFileKey = fileKey;
         ResizeCanvas(definition.Width, definition.Height);
         definition.Pixels.CopyTo(_pixels, 0);
         CancelSelection(restoreLifted: false);
@@ -1048,7 +1100,7 @@ public sealed class AssetEditorUi
 
     private void EnsureSelectedAssetVisible()
     {
-        if (_selectedAssetName == null)
+        if (_selectedFileKey == null)
         {
             return;
         }
@@ -1056,7 +1108,7 @@ public sealed class AssetEditorUi
         int index = -1;
         for (int i = 0; i < _savedNames.Count; i++)
         {
-            if (string.Equals(_savedNames[i], _selectedAssetName, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(_savedNames[i], _selectedFileKey, StringComparison.OrdinalIgnoreCase))
             {
                 index = i;
                 break;
@@ -1086,8 +1138,8 @@ public sealed class AssetEditorUi
 
     private bool TryPersistCurrent(AssetLibrary assets, out string message)
     {
-        string name = DefinedAssetStore.SanitizeFileName(_nameField.Text);
-        if (name.Length == 0)
+        string displayName = _nameField.Text.Trim();
+        if (DefinedAssetStore.SanitizeFileName(displayName).Length == 0)
         {
             message = "Enter a valid name";
             return false;
@@ -1095,18 +1147,19 @@ public sealed class AssetEditorUi
 
         try
         {
-            if (_savedAssetName != null && !string.Equals(name, _savedAssetName, StringComparison.OrdinalIgnoreCase))
+            string newFileKey = DefinedAssetStore.ToAssetFileName(displayName);
+            if (_savedFileKey != null && !string.Equals(newFileKey, _savedFileKey, StringComparison.OrdinalIgnoreCase))
             {
-                DefinedAssetStore.DeleteAsset(_savedAssetName);
+                DefinedAssetStore.DeleteAsset(_savedFileKey);
             }
 
             PixelAssetDefinition definition = BuildDefinition();
-            SavedAssetFile file = SavedAssetFile.FromDefinition(name, definition);
-            DefinedAssetStore.SaveAsset(file);
-            assets.DefineOrReplace(name, definition);
-            _nameField.SetText(name);
-            _savedAssetName = name;
-            _selectedAssetName = name;
+            SavedAssetFile file = SavedAssetFile.FromDefinition(displayName, definition);
+            string fileKey = DefinedAssetStore.SaveAsset(file);
+            assets.DefineOrReplace(displayName, definition);
+            _nameField.SetText(displayName);
+            _savedFileKey = fileKey;
+            _selectedFileKey = fileKey;
             RefreshAssetList();
             EnsureSelectedAssetVisible();
             message = "";

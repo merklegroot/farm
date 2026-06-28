@@ -5,7 +5,7 @@ namespace FarmGame;
 
 public sealed class CropField
 {
-    private const float PlantAnimHalfDuration = 0.45f;
+    private const float StageTransitionDuration = 0.45f;
 
     private readonly int _width;
     private readonly int _height;
@@ -69,64 +69,113 @@ public sealed class CropField
                     continue;
                 }
 
-                string seedName = CropTypeInfo.SeedAssetName(crop.Type);
-                if (!assets.TryGetAsset(seedName, out GameAsset seedAsset))
-                {
-                    continue;
-                }
-
                 float tileLeft = offset.X + x * tileScreenW;
                 float tileTop = offset.Y + y * tileScreenH;
 
-                string sproutName = CropTypeInfo.SproutAssetName(crop.Type);
-                if (!assets.TryGetAsset(sproutName, out GameAsset sproutAsset))
-                {
-                    DrawAssetCenteredInTile(seedAsset, tileLeft, tileTop, tileScreenW, tileScreenH, scale, Color.WHITE);
-                    continue;
-                }
-
-                float blend = ComputePlantBlend(crop.AnimTimer);
-                byte seedAlpha = (byte)(255 * (1f - blend));
-                byte sproutAlpha = (byte)(255 * blend);
-
-                if (seedAlpha > 0)
-                {
-                    DrawAssetCenteredInTile(
-                        seedAsset,
-                        tileLeft,
-                        tileTop,
-                        tileScreenW,
-                        tileScreenH,
-                        scale,
-                        new Color((byte)255, (byte)255, (byte)255, seedAlpha));
-                }
-
-                if (sproutAlpha > 0)
-                {
-                    DrawAssetCenteredInTile(
-                        sproutAsset,
-                        tileLeft,
-                        tileTop,
-                        tileScreenW,
-                        tileScreenH,
-                        scale,
-                        new Color((byte)255, (byte)255, (byte)255, sproutAlpha));
-                }
+                DrawCropGrowth(crop, assets, tileLeft, tileTop, tileScreenW, tileScreenH, scale);
             }
         }
     }
 
-    private static float ComputePlantBlend(float animTimer)
+    private void DrawCropGrowth(
+        Crop crop,
+        AssetLibrary assets,
+        float tileLeft,
+        float tileTop,
+        float tileScreenW,
+        float tileScreenH,
+        float scale)
     {
-        float cycleLength = PlantAnimHalfDuration * 2f;
-        if (animTimer >= cycleLength)
+        IReadOnlyList<string> stageNames = CropTypeInfo.GrowthStageAssetNames(crop.Type);
+        var stages = new List<GameAsset>();
+        foreach (string name in stageNames)
         {
-            return 0f;
+            if (TryGetGrowthAsset(assets, name, out GameAsset asset))
+            {
+                stages.Add(asset);
+            }
         }
 
-        return animTimer < PlantAnimHalfDuration
-            ? animTimer / PlantAnimHalfDuration
-            : (cycleLength - animTimer) / PlantAnimHalfDuration;
+        if (stages.Count == 0)
+        {
+            return;
+        }
+
+        if (stages.Count == 1)
+        {
+            DrawAssetCenteredInTile(stages[0], tileLeft, tileTop, tileScreenW, tileScreenH, scale, Color.WHITE);
+            return;
+        }
+
+        ComputeGrowthStage(crop.AnimTimer, stages.Count, out int fromStage, out int toStage, out float blend);
+        byte fromAlpha = (byte)(255 * (1f - blend));
+        byte toAlpha = (byte)(255 * blend);
+
+        if (fromAlpha > 0)
+        {
+            DrawAssetCenteredInTile(
+                stages[fromStage],
+                tileLeft,
+                tileTop,
+                tileScreenW,
+                tileScreenH,
+                scale,
+                new Color((byte)255, (byte)255, (byte)255, fromAlpha));
+        }
+
+        if (toAlpha > 0)
+        {
+            DrawAssetCenteredInTile(
+                stages[toStage],
+                tileLeft,
+                tileTop,
+                tileScreenW,
+                tileScreenH,
+                scale,
+                new Color((byte)255, (byte)255, (byte)255, toAlpha));
+        }
+    }
+
+    private static bool TryGetGrowthAsset(AssetLibrary assets, string name, out GameAsset asset)
+    {
+        if (assets.TryGetAsset(name, out asset))
+        {
+            return true;
+        }
+
+        if (string.Equals(name, "Sprout_2", StringComparison.OrdinalIgnoreCase) &&
+            assets.TryGetAsset("Sprout__2", out asset))
+        {
+            return true;
+        }
+
+        asset = null!;
+        return false;
+    }
+
+    private static void ComputeGrowthStage(
+        float animTimer,
+        int stageCount,
+        out int fromStage,
+        out int toStage,
+        out float blend)
+    {
+        int segmentCount = Math.Max(1, (stageCount - 1) * 2);
+        float cycleLength = StageTransitionDuration * segmentCount;
+        float phase = animTimer % cycleLength;
+        int segment = Math.Min((int)(phase / StageTransitionDuration), segmentCount - 1);
+        blend = (phase - segment * StageTransitionDuration) / StageTransitionDuration;
+
+        if (segment < stageCount - 1)
+        {
+            fromStage = segment;
+            toStage = segment + 1;
+            return;
+        }
+
+        int backSegment = segment - (stageCount - 1);
+        fromStage = stageCount - 1 - backSegment;
+        toStage = fromStage - 1;
     }
 
     private static void DrawAssetCenteredInTile(

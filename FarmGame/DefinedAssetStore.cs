@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Raylib_cs;
 
 namespace FarmGame;
@@ -96,7 +97,7 @@ public static class DefinedAssetStore
     public static string SaveAsset(SavedAssetFile asset)
     {
         EnsureDirectoryExists();
-        string fileName = SanitizeFileName(asset.Name);
+        string fileName = ToAssetFileName(asset.Name);
         if (fileName.Length == 0)
         {
             throw new InvalidOperationException("Asset name must contain letters or numbers.");
@@ -104,19 +105,29 @@ public static class DefinedAssetStore
 
         string path = Path.Combine(AssetsDirectory, $"{fileName}.json");
         File.WriteAllText(path, JsonSerializer.Serialize(asset, JsonOptions));
-        return path;
+        return fileName;
     }
 
     public static SavedAssetFile LoadAsset(string name)
     {
-        string path = Path.Combine(AssetsDirectory, $"{SanitizeFileName(name)}.json");
-        if (!File.Exists(path))
-        {
-            throw new FileNotFoundException($"Saved asset '{name}' was not found.", path);
-        }
-
+        string fileName = ResolveAssetFileStem(name);
+        string path = Path.Combine(AssetsDirectory, $"{fileName}.json");
         return JsonSerializer.Deserialize<SavedAssetFile>(File.ReadAllText(path), JsonOptions)
             ?? throw new InvalidDataException($"Could not parse asset file '{path}'.");
+    }
+
+    public static string ResolveAssetFileStem(string name)
+    {
+        foreach (string candidate in GetAssetFileNameCandidates(name))
+        {
+            string path = Path.Combine(AssetsDirectory, $"{candidate}.json");
+            if (File.Exists(path))
+            {
+                return candidate;
+            }
+        }
+
+        throw new FileNotFoundException($"Saved asset '{name}' was not found.");
     }
 
     public static IReadOnlyList<string> ListAssetNames()
@@ -150,10 +161,18 @@ public static class DefinedAssetStore
 
     public static void DeleteAsset(string name)
     {
-        string path = Path.Combine(AssetsDirectory, $"{SanitizeFileName(name)}.json");
-        if (File.Exists(path))
+        try
         {
-            File.Delete(path);
+            string fileName = ResolveAssetFileStem(name);
+            string path = Path.Combine(AssetsDirectory, $"{fileName}.json");
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (FileNotFoundException)
+        {
+            // Already removed or never saved.
         }
     }
 
@@ -173,6 +192,49 @@ public static class DefinedAssetStore
         return $"asset_{Guid.NewGuid():N}"[..16];
     }
 
+    public static string SuggestCloneName(string sourceName)
+    {
+        EnsureDirectoryExists();
+        var existingFiles = new HashSet<string>(ListAssetNames(), StringComparer.OrdinalIgnoreCase);
+        string root = GetCloneRootName(sourceName);
+
+        for (int i = 2; i < 1000; i++)
+        {
+            string candidate = $"{root} ({i})";
+            if (!existingFiles.Contains(ToAssetFileName(candidate)))
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException("Could not find an available clone name.");
+    }
+
+    public static string ToAssetFileName(string name)
+    {
+        name = name.Trim();
+        Match numbered = Regex.Match(name, @"^(.+?)\s+\((\d+)\)$");
+        if (numbered.Success)
+        {
+            string root = SanitizeFileName(numbered.Groups[1].Value);
+            string index = numbered.Groups[2].Value;
+            if (root.Length == 0)
+            {
+                return SanitizeFileName(name);
+            }
+
+            return $"{root}_{index}";
+        }
+
+        return SanitizeFileName(name);
+    }
+
+    private static string GetCloneRootName(string sourceName)
+    {
+        Match numbered = Regex.Match(sourceName.Trim(), @"^(.+?)\s+\((\d+)\)$");
+        return numbered.Success ? numbered.Groups[1].Value.Trim() : sourceName.Trim();
+    }
+
     public static string SanitizeFileName(string name)
     {
         var chars = name
@@ -180,5 +242,29 @@ public static class DefinedAssetStore
             .Select(c => char.IsLetterOrDigit(c) || c is '_' or '-' ? c : '_')
             .ToArray();
         return new string(chars).Trim('_');
+    }
+
+    private static IEnumerable<string> GetAssetFileNameCandidates(string name)
+    {
+        string trimmed = name.Trim();
+        if (trimmed.Length == 0)
+        {
+            yield break;
+        }
+
+        yield return trimmed;
+
+        string fromDisplay = ToAssetFileName(trimmed);
+        if (!string.Equals(fromDisplay, trimmed, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return fromDisplay;
+        }
+
+        string sanitized = SanitizeFileName(trimmed);
+        if (!string.Equals(sanitized, trimmed, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(sanitized, fromDisplay, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return sanitized;
+        }
     }
 }

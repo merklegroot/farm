@@ -78,5 +78,5 @@ public sealed class SimpleTextField
     }
 
     private static bool IsAllowed(char c) =>
-        char.IsLetterOrDigit(c) || c is '_' or '-';
+        char.IsLetterOrDigit(c) || c is '_' or '-' or ' ' or '(' or ')';
 }
