@@ -5,6 +5,8 @@ namespace FarmGame;
 
 public sealed class CropField
 {
+    private const float PlantAnimHalfDuration = 0.45f;
+
     private readonly int _width;
     private readonly int _height;
     private readonly Crop?[] _crops;
@@ -14,6 +16,20 @@ public sealed class CropField
         _width = mapWidth;
         _height = mapHeight;
         _crops = new Crop?[mapWidth * mapHeight];
+    }
+
+    public void Update(float deltaTime)
+    {
+        float dt = Math.Min(deltaTime, 1f / 60f);
+
+        for (int i = 0; i < _crops.Length; i++)
+        {
+            Crop? crop = _crops[i];
+            if (crop != null)
+            {
+                crop.AnimTimer += dt;
+            }
+        }
     }
 
     public bool TryPlant(int tileX, int tileY, CropType type, TileMap map, AssetLibrary assets)
@@ -34,7 +50,7 @@ public sealed class CropField
             return false;
         }
 
-        _crops[Index(tileX, tileY)] = new Crop { Type = type };
+        _crops[Index(tileX, tileY)] = new Crop { Type = type, AnimTimer = 0f };
         return true;
     }
 
@@ -53,19 +69,80 @@ public sealed class CropField
                     continue;
                 }
 
-                string assetName = CropTypeInfo.SeedAssetName(crop.Type);
-                if (!assets.TryGetAsset(assetName, out GameAsset asset))
+                string seedName = CropTypeInfo.SeedAssetName(crop.Type);
+                if (!assets.TryGetAsset(seedName, out GameAsset seedAsset))
                 {
                     continue;
                 }
 
-                float assetScreenW = asset.Width * scale;
-                float assetScreenH = asset.Height * scale;
-                float destX = offset.X + x * tileScreenW + (tileScreenW - assetScreenW) * 0.5f;
-                float destY = offset.Y + y * tileScreenH + (tileScreenH - assetScreenH) * 0.5f;
-                asset.DrawScreenTopLeft(new Vector2(destX, destY), scale);
+                float tileLeft = offset.X + x * tileScreenW;
+                float tileTop = offset.Y + y * tileScreenH;
+
+                string sproutName = CropTypeInfo.SproutAssetName(crop.Type);
+                if (!assets.TryGetAsset(sproutName, out GameAsset sproutAsset))
+                {
+                    DrawAssetCenteredInTile(seedAsset, tileLeft, tileTop, tileScreenW, tileScreenH, scale, Color.WHITE);
+                    continue;
+                }
+
+                float blend = ComputePlantBlend(crop.AnimTimer);
+                byte seedAlpha = (byte)(255 * (1f - blend));
+                byte sproutAlpha = (byte)(255 * blend);
+
+                if (seedAlpha > 0)
+                {
+                    DrawAssetCenteredInTile(
+                        seedAsset,
+                        tileLeft,
+                        tileTop,
+                        tileScreenW,
+                        tileScreenH,
+                        scale,
+                        new Color((byte)255, (byte)255, (byte)255, seedAlpha));
+                }
+
+                if (sproutAlpha > 0)
+                {
+                    DrawAssetCenteredInTile(
+                        sproutAsset,
+                        tileLeft,
+                        tileTop,
+                        tileScreenW,
+                        tileScreenH,
+                        scale,
+                        new Color((byte)255, (byte)255, (byte)255, sproutAlpha));
+                }
             }
         }
+    }
+
+    private static float ComputePlantBlend(float animTimer)
+    {
+        float cycleLength = PlantAnimHalfDuration * 2f;
+        if (animTimer >= cycleLength)
+        {
+            return 0f;
+        }
+
+        return animTimer < PlantAnimHalfDuration
+            ? animTimer / PlantAnimHalfDuration
+            : (cycleLength - animTimer) / PlantAnimHalfDuration;
+    }
+
+    private static void DrawAssetCenteredInTile(
+        GameAsset asset,
+        float tileLeft,
+        float tileTop,
+        float tileScreenW,
+        float tileScreenH,
+        float scale,
+        Color tint)
+    {
+        float assetScreenW = asset.Width * scale;
+        float assetScreenH = asset.Height * scale;
+        float destX = tileLeft + (tileScreenW - assetScreenW) * 0.5f;
+        float destY = tileTop + (tileScreenH - assetScreenH) * 0.5f;
+        asset.DrawScreenTopLeft(new Vector2(destX, destY), scale, tint);
     }
 
     private bool InBounds(int tileX, int tileY) =>
@@ -76,5 +153,6 @@ public sealed class CropField
     private sealed class Crop
     {
         public required CropType Type { get; init; }
+        public float AnimTimer;
     }
 }

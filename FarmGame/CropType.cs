@@ -21,4 +21,11 @@ public static class CropTypeInfo
         CropType.Wheat => "Seeds",
         _ => "Seeds",
     };
+
+    public static string SproutAssetName(CropType type) => type switch
+    {
+        CropType.Carrot => "Sprout",
+        CropType.Wheat => "Sprout",
+        _ => "Sprout",
+    };
 }

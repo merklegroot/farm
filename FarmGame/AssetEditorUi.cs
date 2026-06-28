@@ -5,6 +5,12 @@ namespace FarmGame;
 
 public sealed class AssetEditorUi
 {
+    private enum EditorTool
+    {
+        Brush,
+        Select,
+    }
+
     private const int MinCanvasSize = 1;
     private const int MaxCanvasSize = 32;
     private const int CellSize = 10;
@@ -31,11 +37,30 @@ public sealed class AssetEditorUi
     private int _height = 16;
     private bool _isOpen;
     private bool _isPlacing;
+    private EditorTool _tool = EditorTool.Brush;
     private int _selectedColorIndex;
     private bool _useEraser;
     private bool _nameFocused;
     private bool _wasNameFocused;
     private bool _pixelsDirty;
+    private bool _hasSelection;
+    private int _selX;
+    private int _selY;
+    private int _selW;
+    private int _selH;
+    private Color[]? _liftedPixels;
+    private bool _isSelecting;
+    private int _selectStartX;
+    private int _selectStartY;
+    private int _selectEndX;
+    private int _selectEndY;
+    private bool _isMovingSelection;
+    private int _moveX;
+    private int _moveY;
+    private int _moveGrabOffsetX;
+    private int _moveGrabOffsetY;
+    private int _originalSelX;
+    private int _originalSelY;
     private string? _savedAssetName;
     private string? _selectedAssetName;
     private string _statusMessage = "";
@@ -46,6 +71,12 @@ public sealed class AssetEditorUi
     private Rectangle _nameFieldRect;
     private Rectangle _assetListRect;
     private Rectangle _newAssetButtonRect;
+    private Rectangle _brushToolRect;
+    private Rectangle _selectToolRect;
+    private Rectangle _paletteRect;
+    private Rectangle _clearButtonRect;
+    private Rectangle _placeButtonRect;
+    private Rectangle _closeButtonRect;
     private IReadOnlyList<string> _savedNames = [];
 
     public bool IsOpen => _isOpen;
@@ -95,6 +126,7 @@ public sealed class AssetEditorUi
         {
             _isPlacing = false;
             _nameFocused = false;
+            CancelSelection(restoreLifted: true);
         }
 
         HandleFocus();
@@ -112,14 +144,24 @@ public sealed class AssetEditorUi
         HandleNewAssetButton(assets);
         HandleAssetList(assets);
         HandleAssetListScroll();
+        HandleToolButtons();
 
         if (!_isPlacing)
         {
             HandlePaletteInput();
-            HandleCanvasPaint(assets);
+            if (_tool == EditorTool.Brush)
+            {
+                HandleCanvasPaint(assets);
+            }
+            else
+            {
+                HandleCanvasSelect(assets);
+            }
         }
 
-        if (_pixelsDirty && Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_LEFT))
+        if (_pixelsDirty &&
+            (Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_LEFT) ||
+             Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_RIGHT)))
         {
             PersistCurrent(assets);
             _pixelsDirty = false;
@@ -178,12 +220,17 @@ public sealed class AssetEditorUi
         DrawDimensionRow(x, ref y);
         y += 8;
 
-        string mode = _isPlacing ? "Click the map to place" : "Changes save automatically";
+        string mode = _isPlacing ? "Click the map to place"
+            : _tool == EditorTool.Select ? "Drag to select, then drag selection to move"
+            : "Changes save automatically";
         UiText.DrawText(mode, x, y, 15, new Color(180, 185, 195, 255));
         y += 22;
 
         DrawCanvas(y);
         y += _height * CellSize + 12;
+
+        DrawTools(x, y);
+        y += 32;
 
         DrawPalette(x, y);
         y += 36;
@@ -240,7 +287,7 @@ public sealed class AssetEditorUi
     {
         int canvasBlock = _height * CellSize;
         int assetListBlock = 18 + 28 + AssetListVisibleRows * AssetRowHeight + 4;
-        int panelHeight = PanelPadding * 2 + 30 + 18 + 34 + 24 + 8 + 22 + canvasBlock + 12 + 36 + 36 + assetListBlock + 24;
+        int panelHeight = PanelPadding * 2 + 30 + 18 + 34 + 24 + 8 + 22 + canvasBlock + 12 + 32 + 36 + 36 + assetListBlock + 24;
         _panelRect = new Rectangle(screenWidth - PanelWidth - 12, 12, PanelWidth, panelHeight);
         _nameFieldRect = new Rectangle(_panelRect.X + PanelPadding, _panelRect.Y + PanelPadding + 30 + 18, PanelWidth - PanelPadding * 2, 28);
         _canvasRect = new Rectangle(
@@ -248,13 +295,29 @@ public sealed class AssetEditorUi
             _nameFieldRect.Y + 34 + 24 + 8 + 22,
             _width * CellSize,
             canvasBlock);
+
+        float toolsY = _canvasRect.Y + _canvasRect.Height + 12;
+        _brushToolRect = new Rectangle(_panelRect.X + PanelPadding, toolsY, 52, 24);
+        _selectToolRect = new Rectangle(_panelRect.X + PanelPadding + 58, toolsY, 52, 24);
+
+        const int swatch = 24;
+        const int gap = 4;
+        float paletteY = toolsY + 32;
+        int paletteWidth = Palette.Length * (swatch + gap) + swatch;
+        _paletteRect = new Rectangle(_panelRect.X + PanelPadding, paletteY, paletteWidth, swatch);
+
+        float actionY = paletteY + 36;
+        _clearButtonRect = new Rectangle(_panelRect.X + PanelPadding, actionY, 68, 28);
+        _placeButtonRect = new Rectangle(_panelRect.X + PanelPadding + 74, actionY, 68, 28);
+        _closeButtonRect = new Rectangle(_panelRect.X + PanelPadding + 148, actionY, 68, 28);
+
         _assetListRect = new Rectangle(
             _panelRect.X + PanelPadding,
-            _canvasRect.Y + _canvasRect.Height + 12 + 36 + 36 + 28,
+            actionY + 36 + 28,
             PanelWidth - PanelPadding * 2,
             AssetListVisibleRows * AssetRowHeight);
 
-        float assetHeaderY = _canvasRect.Y + _canvasRect.Height + 12 + 36 + 36;
+        float assetHeaderY = actionY + 36;
         _newAssetButtonRect = new Rectangle(
             _panelRect.X + PanelWidth - PanelPadding - 52,
             assetHeaderY - 4,
@@ -310,22 +373,100 @@ public sealed class AssetEditorUi
             float gy = _canvasRect.Y + i * CellSize;
             Raylib.DrawLineV(new Vector2(_canvasRect.X, gy), new Vector2(_canvasRect.X + _canvasRect.Width, gy), new Color(40, 42, 50, 180));
         }
+
+        DrawSelectionOverlay();
+    }
+
+    private void DrawSelectionOverlay()
+    {
+        if (_isSelecting)
+        {
+            NormalizeRect(_selectStartX, _selectStartY, _selectEndX, _selectEndY, out int x, out int y, out int w, out int h);
+            DrawSelectionRect(x, y, w, h, new Color(240, 200, 80, 255));
+            return;
+        }
+
+        if (_isMovingSelection && _liftedPixels != null)
+        {
+            DrawFloatingPixels(_moveX, _moveY, _selW, _selH, _liftedPixels);
+            DrawSelectionRect(_moveX, _moveY, _selW, _selH, new Color(240, 200, 80, 255));
+            return;
+        }
+
+        if (_hasSelection)
+        {
+            DrawSelectionRect(_selX, _selY, _selW, _selH, new Color(240, 200, 80, 255));
+        }
+    }
+
+    private void DrawSelectionRect(int px, int py, int pw, int ph, Color color)
+    {
+        if (pw <= 0 || ph <= 0)
+        {
+            return;
+        }
+
+        float left = _canvasRect.X + px * CellSize;
+        float top = _canvasRect.Y + py * CellSize;
+        float right = left + pw * CellSize;
+        float bottom = top + ph * CellSize;
+
+        Raylib.DrawLineEx(new Vector2(left, top), new Vector2(right, top), 1f, color);
+        Raylib.DrawLineEx(new Vector2(right, top), new Vector2(right, bottom), 1f, color);
+        Raylib.DrawLineEx(new Vector2(right, bottom), new Vector2(left, bottom), 1f, color);
+        Raylib.DrawLineEx(new Vector2(left, bottom), new Vector2(left, top), 1f, color);
+    }
+
+    private void DrawFloatingPixels(int destX, int destY, int w, int h, Color[] pixels)
+    {
+        for (int py = 0; py < h; py++)
+        {
+            for (int px = 0; px < w; px++)
+            {
+                Color color = pixels[py * w + px];
+                if (color.A == 0)
+                {
+                    continue;
+                }
+
+                int canvasX = destX + px;
+                int canvasY = destY + py;
+                if (canvasX < 0 || canvasY < 0 || canvasX >= _width || canvasY >= _height)
+                {
+                    continue;
+                }
+
+                var cell = new Rectangle(
+                    _canvasRect.X + canvasX * CellSize,
+                    _canvasRect.Y + canvasY * CellSize,
+                    CellSize,
+                    CellSize);
+                Raylib.DrawRectangleRec(cell, color);
+            }
+        }
+    }
+
+    private void DrawTools(int x, int y)
+    {
+        DrawButton(_brushToolRect, "Brush", _tool == EditorTool.Brush);
+        DrawButton(_selectToolRect, "Select", _tool == EditorTool.Select);
     }
 
     private void DrawPalette(int x, int y)
     {
         const int swatch = 24;
         const int gap = 4;
+        float paletteY = _paletteRect.Y;
 
         for (int i = 0; i < Palette.Length; i++)
         {
-            var rect = new Rectangle(x + i * (swatch + gap), y, swatch, swatch);
+            var rect = new Rectangle(x + i * (swatch + gap), paletteY, swatch, swatch);
             Raylib.DrawRectangleRec(rect, Palette[i]);
             Raylib.DrawRectangleLinesEx(rect, (!_useEraser && i == _selectedColorIndex) ? 2f : 1f,
                 (!_useEraser && i == _selectedColorIndex) ? new Color(240, 200, 80, 255) : new Color(70, 75, 90, 255));
         }
 
-        var eraserRect = new Rectangle(x + Palette.Length * (swatch + gap), y, swatch, swatch);
+        var eraserRect = new Rectangle(x + Palette.Length * (swatch + gap), paletteY, swatch, swatch);
         Raylib.DrawRectangleRec(eraserRect, new Color(32, 35, 42, 255));
         UiText.DrawText("X", (int)eraserRect.X + 7, (int)eraserRect.Y + 3, 16, Color.LIGHTGRAY);
         Raylib.DrawRectangleLinesEx(eraserRect, _useEraser ? 2f : 1f, _useEraser ? new Color(240, 200, 80, 255) : new Color(70, 75, 90, 255));
@@ -333,9 +474,9 @@ public sealed class AssetEditorUi
 
     private void DrawActionButtons(int x, int y)
     {
-        DrawButton(new Rectangle(x, y, 68, 28), "Clear", false);
-        DrawButton(new Rectangle(x + 74, y, 68, 28), "Place", _isPlacing);
-        DrawButton(new Rectangle(x + 148, y, 68, 28), "Close", false);
+        DrawButton(_clearButtonRect, "Clear", false);
+        DrawButton(_placeButtonRect, "Place", _isPlacing);
+        DrawButton(_closeButtonRect, "Close", false);
     }
 
     private void DrawAssetList(int x, int y)
@@ -444,16 +585,15 @@ public sealed class AssetEditorUi
         }
 
         Vector2 mouse = Raylib.GetMousePosition();
-        int x = (int)_panelRect.X + PanelPadding;
-        int y = (int)(_canvasRect.Y + _canvasRect.Height + 12 + 36);
 
-        if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x, y, 68, 28)))
+        if (Raylib.CheckCollisionPointRec(mouse, _clearButtonRect))
         {
+            CancelSelection(restoreLifted: true);
             ClearCanvas();
             PersistCurrent(assets);
             SetStatus("Canvas cleared");
         }
-        else if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x + 74, y, 68, 28)))
+        else if (Raylib.CheckCollisionPointRec(mouse, _placeButtonRect))
         {
             if (PersistCurrent(assets, out string message))
             {
@@ -464,7 +604,7 @@ public sealed class AssetEditorUi
                 SetStatus(message);
             }
         }
-        else if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x + 148, y, 68, 28)))
+        else if (Raylib.CheckCollisionPointRec(mouse, _closeButtonRect))
         {
             PersistCurrent(assets);
             _isOpen = false;
@@ -543,8 +683,14 @@ public sealed class AssetEditorUi
         }
 
         Vector2 mouse = Raylib.GetMousePosition();
-        int x = (int)_panelRect.X + PanelPadding;
-        int y = (int)(_canvasRect.Y + _canvasRect.Height + 12);
+        if (Raylib.CheckCollisionPointRec(mouse, _brushToolRect) ||
+            Raylib.CheckCollisionPointRec(mouse, _selectToolRect))
+        {
+            return;
+        }
+
+        int x = (int)_paletteRect.X;
+        int y = (int)_paletteRect.Y;
         const int swatch = 24;
         const int gap = 4;
 
@@ -553,6 +699,8 @@ public sealed class AssetEditorUi
             var rect = new Rectangle(x + i * (swatch + gap), y, swatch, swatch);
             if (Raylib.CheckCollisionPointRec(mouse, rect))
             {
+                _tool = EditorTool.Brush;
+                CancelSelection(restoreLifted: true);
                 _selectedColorIndex = i;
                 _useEraser = false;
                 return;
@@ -562,13 +710,246 @@ public sealed class AssetEditorUi
         var eraserRect = new Rectangle(x + Palette.Length * (swatch + gap), y, swatch, swatch);
         if (Raylib.CheckCollisionPointRec(mouse, eraserRect))
         {
+            _tool = EditorTool.Brush;
+            CancelSelection(restoreLifted: true);
             _useEraser = true;
+        }
+    }
+
+    private void HandleToolButtons()
+    {
+        if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
+        {
+            return;
+        }
+
+        Vector2 mouse = Raylib.GetMousePosition();
+        if (Raylib.CheckCollisionPointRec(mouse, _brushToolRect))
+        {
+            _tool = EditorTool.Brush;
+            CancelSelection(restoreLifted: true);
+            return;
+        }
+
+        if (Raylib.CheckCollisionPointRec(mouse, _selectToolRect))
+        {
+            _tool = EditorTool.Select;
+        }
+    }
+
+    private void HandleCanvasSelect(AssetLibrary assets)
+    {
+        Vector2 mouse = Raylib.GetMousePosition();
+        if (!TryGetCanvasPixel(mouse, out int px, out int py))
+        {
+            if (Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_LEFT))
+            {
+                if (_isSelecting)
+                {
+                    FinishSelection();
+                }
+                else if (_isMovingSelection)
+                {
+                    CommitMove(assets);
+                }
+            }
+
+            return;
+        }
+
+        if (Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
+        {
+            if (_hasSelection && !_isMovingSelection && PointInSelection(px, py))
+            {
+                BeginMove(px, py);
+            }
+            else
+            {
+                if (_isMovingSelection)
+                {
+                    CommitMove(assets);
+                }
+                else if (_hasSelection)
+                {
+                    CancelSelection(restoreLifted: false);
+                }
+
+                _isSelecting = true;
+                _selectStartX = px;
+                _selectStartY = py;
+                _selectEndX = px;
+                _selectEndY = py;
+            }
+        }
+
+        if (_isSelecting && Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT))
+        {
+            _selectEndX = px;
+            _selectEndY = py;
+        }
+
+        if (_isMovingSelection && Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT))
+        {
+            _moveX = px - _moveGrabOffsetX;
+            _moveY = py - _moveGrabOffsetY;
+        }
+
+        if (Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_LEFT))
+        {
+            if (_isSelecting)
+            {
+                FinishSelection();
+            }
+            else if (_isMovingSelection)
+            {
+                CommitMove(assets);
+            }
+        }
+    }
+
+    private void BeginMove(int grabPx, int grabPy)
+    {
+        _liftedPixels = CopyRegion(_selX, _selY, _selW, _selH);
+        ClearRegion(_selX, _selY, _selW, _selH);
+        _originalSelX = _selX;
+        _originalSelY = _selY;
+        _moveGrabOffsetX = grabPx - _selX;
+        _moveGrabOffsetY = grabPy - _selY;
+        _moveX = _selX;
+        _moveY = _selY;
+        _isMovingSelection = true;
+        _pixelsDirty = true;
+    }
+
+    private void CommitMove(AssetLibrary assets)
+    {
+        if (_liftedPixels == null)
+        {
+            _isMovingSelection = false;
+            return;
+        }
+
+        PasteRegion(_moveX, _moveY, _selW, _selH, _liftedPixels);
+        _selX = _moveX;
+        _selY = _moveY;
+        _liftedPixels = null;
+        _isMovingSelection = false;
+        _hasSelection = _selW > 0 && _selH > 0;
+        _pixelsDirty = true;
+        PersistCurrent(assets);
+    }
+
+    private void FinishSelection()
+    {
+        _isSelecting = false;
+        NormalizeRect(_selectStartX, _selectStartY, _selectEndX, _selectEndY, out _selX, out _selY, out _selW, out _selH);
+        _hasSelection = _selW > 0 && _selH > 0;
+    }
+
+    private void CancelSelection(bool restoreLifted)
+    {
+        if (restoreLifted && _isMovingSelection && _liftedPixels != null)
+        {
+            PasteRegion(_originalSelX, _originalSelY, _selW, _selH, _liftedPixels);
+            _pixelsDirty = true;
+        }
+
+        _hasSelection = false;
+        _isSelecting = false;
+        _isMovingSelection = false;
+        _liftedPixels = null;
+        _selW = 0;
+        _selH = 0;
+    }
+
+    private bool PointInSelection(int px, int py) =>
+        _hasSelection && px >= _selX && py >= _selY && px < _selX + _selW && py < _selY + _selH;
+
+    private bool TryGetCanvasPixel(Vector2 mouse, out int px, out int py)
+    {
+        if (!Raylib.CheckCollisionPointRec(mouse, _canvasRect))
+        {
+            px = 0;
+            py = 0;
+            return false;
+        }
+
+        px = (int)((mouse.X - _canvasRect.X) / CellSize);
+        py = (int)((mouse.Y - _canvasRect.Y) / CellSize);
+        px = Math.Clamp(px, 0, _width - 1);
+        py = Math.Clamp(py, 0, _height - 1);
+        return true;
+    }
+
+    private static void NormalizeRect(int x1, int y1, int x2, int y2, out int x, out int y, out int w, out int h)
+    {
+        x = Math.Min(x1, x2);
+        y = Math.Min(y1, y2);
+        w = Math.Abs(x2 - x1) + 1;
+        h = Math.Abs(y2 - y1) + 1;
+    }
+
+    private Color[] CopyRegion(int x, int y, int w, int h)
+    {
+        var copy = new Color[w * h];
+        for (int py = 0; py < h; py++)
+        {
+            for (int px = 0; px < w; px++)
+            {
+                copy[py * w + px] = _pixels[(y + py) * _width + (x + px)];
+            }
+        }
+
+        return copy;
+    }
+
+    private void ClearRegion(int x, int y, int w, int h)
+    {
+        for (int py = 0; py < h; py++)
+        {
+            for (int px = 0; px < w; px++)
+            {
+                int cx = x + px;
+                int cy = y + py;
+                if (cx < 0 || cy < 0 || cx >= _width || cy >= _height)
+                {
+                    continue;
+                }
+
+                _pixels[cy * _width + cx] = Color.BLANK;
+            }
+        }
+    }
+
+    private void PasteRegion(int destX, int destY, int w, int h, Color[] pixels)
+    {
+        for (int py = 0; py < h; py++)
+        {
+            for (int px = 0; px < w; px++)
+            {
+                int cx = destX + px;
+                int cy = destY + py;
+                if (cx < 0 || cy < 0 || cx >= _width || cy >= _height)
+                {
+                    continue;
+                }
+
+                Color color = pixels[py * w + px];
+                if (color.A == 0)
+                {
+                    continue;
+                }
+
+                _pixels[cy * _width + cx] = color;
+            }
         }
     }
 
     private void HandleCanvasPaint(AssetLibrary assets)
     {
-        if (!Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT))
+        bool painting = Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT);
+        bool erasing = Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_RIGHT);
+        if (!painting && !erasing)
         {
             return;
         }
@@ -586,7 +967,7 @@ public sealed class AssetEditorUi
             return;
         }
 
-        Color next = _useEraser ? Color.BLANK : Palette[_selectedColorIndex];
+        Color next = erasing || _useEraser ? Color.BLANK : Palette[_selectedColorIndex];
         int index = py * _width + px;
         if (_pixels[index].Equals(next))
         {
@@ -638,6 +1019,7 @@ public sealed class AssetEditorUi
         _height = 16;
         _pixels = new Color[16 * 16];
         ClearCanvas();
+        CancelSelection(restoreLifted: false);
         _pixelsDirty = false;
         _isPlacing = false;
         _nameFocused = false;
@@ -657,6 +1039,7 @@ public sealed class AssetEditorUi
         _selectedAssetName = file.Name;
         ResizeCanvas(definition.Width, definition.Height);
         definition.Pixels.CopyTo(_pixels, 0);
+        CancelSelection(restoreLifted: false);
         assets?.DefineOrReplace(file.Name, definition);
         _pixelsDirty = false;
         _isPlacing = false;
@@ -759,6 +1142,7 @@ public sealed class AssetEditorUi
         _width = newWidth;
         _height = newHeight;
         _pixels = resized;
+        CancelSelection(restoreLifted: false);
     }
 
     private void ClearCanvas()

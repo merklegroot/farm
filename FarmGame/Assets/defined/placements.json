@@ -1,3 +1,14 @@
 {
-  "placements": []
+  "placements": [
+    {
+      "asset": "Sprout",
+      "x": 649.04297,
+      "y": 480.48438
+    },
+    {
+      "asset": "Sprout",
+      "x": 633.09766,
+      "y": 430.85547
+    }
+  ]
 }

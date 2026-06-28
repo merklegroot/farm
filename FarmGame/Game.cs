@@ -10,6 +10,10 @@ public class Game
     private const int MapScale = 3;
     private const string Title = "Farm";
     private const string MapTmxRelativePath = "../../../../tiled/tilemap.tmx";
+    private const int DemoPlotTileX = 14;
+    private const int DemoPlotTileY = 10;
+    private const int DemoPlayerTileX = 14;
+    private const int DemoPlayerTileY = 11;
 
     public void Run()
     {
@@ -26,9 +30,7 @@ public class Game
         Raylib.SetTextureFilter(decorTexture, TextureFilter.TEXTURE_FILTER_POINT);
 
         float scale = MapScale;
-        float worldW = map.PixelWidth * scale;
-        float worldH = map.PixelHeight * scale;
-        Vector2 startPos = new Vector2(worldW * 0.5f, worldH * 0.5f);
+        Vector2 startPos = TileCenterWorld(DemoPlayerTileX, DemoPlayerTileY, map, scale);
 
         var player = new Player(
             Path.Combine(assetsBase, "Player", "Player.png"),
@@ -38,7 +40,11 @@ public class Game
         var hotbar = new Hotbar(player.WalkTexture, player.ActionsTexture, decorTexture);
         var assets = new AssetLibrary();
         LoadSavedAssets(assets);
+        SetupDemoPlot(map, crops, assets);
         var assetEditor = new AssetEditorUi();
+
+        float worldW = map.PixelWidth * scale;
+        float worldH = map.PixelHeight * scale;
 
         while (!Raylib.WindowShouldClose())
         {
@@ -96,6 +102,8 @@ public class Game
             }
 
             Raylib.EndDrawing();
+
+            crops.Update(dt);
         }
 
         player.Unload();
@@ -105,6 +113,15 @@ public class Game
         UiText.Unload();
         Raylib.CloseWindow();
     }
+
+    private static void SetupDemoPlot(TileMap map, CropField crops, AssetLibrary assets)
+    {
+        map.TryHoe(DemoPlotTileX, DemoPlotTileY);
+        crops.TryPlant(DemoPlotTileX, DemoPlotTileY, CropType.Carrot, map, assets);
+    }
+
+    private static Vector2 TileCenterWorld(int tileX, int tileY, TileMap map, float scale) =>
+        new Vector2((tileX + 0.5f) * map.TileWidth * scale, (tileY + 0.5f) * map.TileHeight * scale);
 
     private static void LoadSavedAssets(AssetLibrary assets)
     {

@@ -34,12 +34,15 @@ public sealed class GameAsset
         DrawInternal(screenPosition, scale);
     }
 
-    public void DrawScreenTopLeft(Vector2 screenTopLeft, float scale)
+    public void DrawScreenTopLeft(Vector2 screenTopLeft, float scale, Color tint)
     {
         var src = new Rectangle(0, 0, _width, _height);
         var dest = new Rectangle(screenTopLeft.X, screenTopLeft.Y, _width * scale, _height * scale);
-        Raylib.DrawTexturePro(_texture, src, dest, Vector2.Zero, 0f, Color.WHITE);
+        Raylib.DrawTexturePro(_texture, src, dest, Vector2.Zero, 0f, tint);
     }
+
+    public void DrawScreenTopLeft(Vector2 screenTopLeft, float scale) =>
+        DrawScreenTopLeft(screenTopLeft, scale, Color.WHITE);
 
     public void Unload()
     {
