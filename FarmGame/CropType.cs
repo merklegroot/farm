@@ -4,6 +4,7 @@ public enum CropType
 {
     Carrot,
     Wheat,
+    Tomato,
 }
 
 public static class CropTypeInfo
@@ -12,27 +13,44 @@ public static class CropTypeInfo
     {
         PlayerTool.CarrotSeeds => CropType.Carrot,
         PlayerTool.WheatSeeds => CropType.Wheat,
+        PlayerTool.TomatoSeeds => CropType.Tomato,
         _ => null,
     };
 
-    public static string SeedAssetName(CropType type) => type switch
+    public static string DisplayName(CropType type) => type switch
     {
-        CropType.Carrot => "Seeds",
-        CropType.Wheat => "Seeds",
-        _ => "Seeds",
+        CropType.Carrot => "Carrot",
+        CropType.Wheat => "Wheat",
+        CropType.Tomato => "Tomato",
+        _ => type.ToString(),
     };
 
-    public static string SproutAssetName(CropType type) => type switch
+    public static string SeedAssetName(CropType type)
     {
-        CropType.Carrot => "Sprout",
-        CropType.Wheat => "Sprout",
-        _ => "Sprout",
-    };
+        IReadOnlyList<string> stages = GrowthStageAssetNames(type);
+        return stages.Count > 0 ? stages[0] : "Seeds";
+    }
 
-    public static IReadOnlyList<string> GrowthStageAssetNames(CropType type) => type switch
+    public static string SproutAssetName(CropType type)
     {
-        CropType.Carrot => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
-        CropType.Wheat => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
-        _ => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
-    };
+        IReadOnlyList<string> stages = GrowthStageAssetNames(type);
+        return stages.Count > 1 ? stages[1] : "Sprout";
+    }
+
+    public static IReadOnlyList<string> GrowthStageAssetNames(CropType type)
+    {
+        string name = DisplayName(type);
+        IReadOnlyList<string> fromFile = CropDefinitionStore.GetStages(name);
+        if (fromFile.Count > 0)
+        {
+            return fromFile;
+        }
+
+        return type switch
+        {
+            CropType.Carrot => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
+            CropType.Wheat => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
+            _ => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
+        };
+    }
 }

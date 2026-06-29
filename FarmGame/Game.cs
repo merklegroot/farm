@@ -39,6 +39,7 @@ public class Game
 
         var hotbar = new Hotbar(player.WalkTexture, player.ActionsTexture, decorTexture);
         var assets = new AssetLibrary();
+        CropDefinitionStore.LoadAll();
         LoadSavedAssets(assets);
         SetupDemoPlot(map, crops, assets);
         var assetEditor = new AssetEditorUi();
@@ -117,7 +118,7 @@ public class Game
     private static void SetupDemoPlot(TileMap map, CropField crops, AssetLibrary assets)
     {
         map.TryHoe(DemoPlotTileX, DemoPlotTileY);
-        crops.TryPlant(DemoPlotTileX, DemoPlotTileY, CropType.Carrot, map, assets);
+        crops.TryPlant(DemoPlotTileX, DemoPlotTileY, CropType.Tomato, map, assets);
     }
 
     private static Vector2 TileCenterWorld(int tileX, int tileY, TileMap map, float scale) =>
