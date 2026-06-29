@@ -143,10 +143,17 @@ public sealed class CropField
             return true;
         }
 
-        if (string.Equals(name, "Sprout_2", StringComparison.OrdinalIgnoreCase) &&
-            assets.TryGetAsset("Sprout__2", out asset))
+        try
         {
-            return true;
+            SavedAssetFile file = DefinedAssetStore.LoadAsset(name);
+            if (assets.TryGetAsset(file.Name, out asset))
+            {
+                return true;
+            }
+        }
+        catch (FileNotFoundException)
+        {
+            // Fall through.
         }
 
         asset = null!;

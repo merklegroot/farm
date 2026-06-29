@@ -62,6 +62,21 @@ public sealed class AssetLibrary
         }));
     }
 
+    public void RemoveAsset(string name)
+    {
+        if (_assets.TryGetValue(name, out GameAsset? asset))
+        {
+            asset.Unload();
+            _assets.Remove(name);
+        }
+    }
+
+    public void RemovePlacementsForAsset(string name)
+    {
+        _placements.RemoveAll(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+        PersistPlacements();
+    }
+
     public void Unload()
     {
         foreach (GameAsset asset in _assets.Values)

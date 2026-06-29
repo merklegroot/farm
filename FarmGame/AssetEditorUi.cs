@@ -72,6 +72,7 @@ public sealed class AssetEditorUi
     private Rectangle _assetListRect;
     private Rectangle _newAssetButtonRect;
     private Rectangle _cloneAssetButtonRect;
+    private Rectangle _deleteAssetButtonRect;
     private Rectangle _brushToolRect;
     private Rectangle _selectToolRect;
     private Rectangle _paletteRect;
@@ -144,6 +145,7 @@ public sealed class AssetEditorUi
         HandleButtons(assets);
         HandleNewAssetButton(assets);
         HandleCloneAssetButton(assets);
+        HandleDeleteAssetButton(assets);
         HandleAssetList(assets);
         HandleAssetListScroll();
         HandleToolButtons();
@@ -320,6 +322,11 @@ public sealed class AssetEditorUi
             AssetListVisibleRows * AssetRowHeight);
 
         float assetHeaderY = actionY + 36;
+        _deleteAssetButtonRect = new Rectangle(
+            _panelRect.X + PanelWidth - PanelPadding - 52 - 4 - 52 - 4 - 52,
+            assetHeaderY - 4,
+            52,
+            22);
         _cloneAssetButtonRect = new Rectangle(
             _panelRect.X + PanelWidth - PanelPadding - 52 - 4 - 52,
             assetHeaderY - 4,
@@ -489,6 +496,7 @@ public sealed class AssetEditorUi
     private void DrawAssetList(int x, int y)
     {
         UiText.DrawText("Assets", x, y, 14, new Color(150, 155, 170, 255));
+        DrawButton(_deleteAssetButtonRect, "Delete", false);
         DrawButton(_cloneAssetButtonRect, "Clone", false);
         DrawButton(_newAssetButtonRect, "New", false);
 
@@ -651,6 +659,60 @@ public sealed class AssetEditorUi
         }
 
         CloneCurrentAsset(assets);
+    }
+
+    private void HandleDeleteAssetButton(AssetLibrary assets)
+    {
+        if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
+        {
+            return;
+        }
+
+        Vector2 mouse = Raylib.GetMousePosition();
+        if (!Raylib.CheckCollisionPointRec(mouse, _deleteAssetButtonRect))
+        {
+            return;
+        }
+
+        DeleteSelectedAsset(assets);
+    }
+
+    private void DeleteSelectedAsset(AssetLibrary assets)
+    {
+        string? fileKey = _selectedFileKey ?? _savedFileKey;
+        if (fileKey == null)
+        {
+            SetStatus("Select an asset to delete");
+            return;
+        }
+
+        try
+        {
+            SavedAssetFile file = DefinedAssetStore.LoadAsset(fileKey);
+            string displayName = file.Name;
+
+            DefinedAssetStore.DeleteAsset(fileKey);
+            assets.RemoveAsset(displayName);
+            assets.RemovePlacementsForAsset(displayName);
+
+            RefreshAssetList();
+            CancelSelection(restoreLifted: true);
+
+            if (_savedNames.Count > 0)
+            {
+                SelectAsset(_savedNames[0], assets, persistPending: false);
+            }
+            else
+            {
+                BeginNewAsset(assets);
+            }
+
+            SetStatus($"Deleted '{displayName}'");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(ex.Message);
+        }
     }
 
     private void CloneCurrentAsset(AssetLibrary assets)
