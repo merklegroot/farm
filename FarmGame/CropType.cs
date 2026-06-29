@@ -31,8 +31,8 @@ public static class CropTypeInfo
 
     public static IReadOnlyList<string> GrowthStageAssetNames(CropType type) => type switch
     {
-        CropType.Carrot => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)"],
-        CropType.Wheat => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)"],
-        _ => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)"],
+        CropType.Carrot => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
+        CropType.Wheat => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
+        _ => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
     };
 }
