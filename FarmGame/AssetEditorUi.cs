@@ -18,6 +18,14 @@ public sealed class AssetEditorUi
     private const int PanelPadding = 16;
     private const int AssetRowHeight = 22;
     private const int AssetListVisibleRows = 6;
+    private const int MaxUndoSteps = 50;
+
+    private sealed class CanvasSnapshot
+    {
+        public required int Width { get; init; }
+        public required int Height { get; init; }
+        public required Color[] Pixels { get; init; }
+    }
 
     private static readonly Color[] Palette =
     [
@@ -32,6 +40,7 @@ public sealed class AssetEditorUi
     ];
 
     private readonly SimpleTextField _nameField = new("new_asset");
+    private readonly List<CanvasSnapshot> _undoStack = [];
     private Color[] _pixels = new Color[16 * 16];
     private int _width = 16;
     private int _height = 16;
@@ -75,6 +84,7 @@ public sealed class AssetEditorUi
     private Rectangle _deleteAssetButtonRect;
     private Rectangle _brushToolRect;
     private Rectangle _selectToolRect;
+    private Rectangle _undoButtonRect;
     private Rectangle _paletteRect;
     private Rectangle _clearButtonRect;
     private Rectangle _placeButtonRect;
@@ -148,7 +158,8 @@ public sealed class AssetEditorUi
         HandleDeleteAssetButton(assets);
         HandleAssetList(assets);
         HandleAssetListScroll();
-        HandleToolButtons();
+        HandleToolButtons(assets);
+        HandleUndoShortcut(assets);
 
         if (!_isPlacing)
         {
@@ -226,7 +237,7 @@ public sealed class AssetEditorUi
 
         string mode = _isPlacing ? "Click the map to place"
             : _tool == EditorTool.Select ? "Drag to select, then drag selection to move"
-            : "Changes save automatically";
+            : "Ctrl+Z undo · changes save automatically";
         UiText.DrawText(mode, x, y, 15, new Color(180, 185, 195, 255));
         y += 22;
 
@@ -303,6 +314,7 @@ public sealed class AssetEditorUi
         float toolsY = _canvasRect.Y + _canvasRect.Height + 12;
         _brushToolRect = new Rectangle(_panelRect.X + PanelPadding, toolsY, 52, 24);
         _selectToolRect = new Rectangle(_panelRect.X + PanelPadding + 58, toolsY, 52, 24);
+        _undoButtonRect = new Rectangle(_panelRect.X + PanelPadding + 116, toolsY, 52, 24);
 
         const int swatch = 24;
         const int gap = 4;
@@ -464,6 +476,7 @@ public sealed class AssetEditorUi
     {
         DrawButton(_brushToolRect, "Brush", _tool == EditorTool.Brush);
         DrawButton(_selectToolRect, "Select", _tool == EditorTool.Select);
+        DrawButton(_undoButtonRect, "Undo", false);
     }
 
     private void DrawPalette(int x, int y)
@@ -573,21 +586,25 @@ public sealed class AssetEditorUi
 
         if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x + 42, y - 2, 22, 22)))
         {
+            PushUndoSnapshot();
             ResizeCanvas(_width - 1, _height);
             PersistCurrent(assets);
         }
         else if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x + 68, y - 2, 22, 22)))
         {
+            PushUndoSnapshot();
             ResizeCanvas(_width + 1, _height);
             PersistCurrent(assets);
         }
         else if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x + 94, y - 2, 22, 22)))
         {
+            PushUndoSnapshot();
             ResizeCanvas(_width, _height - 1);
             PersistCurrent(assets);
         }
         else if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x + 120, y - 2, 22, 22)))
         {
+            PushUndoSnapshot();
             ResizeCanvas(_width, _height + 1);
             PersistCurrent(assets);
         }
@@ -605,6 +622,7 @@ public sealed class AssetEditorUi
         if (Raylib.CheckCollisionPointRec(mouse, _clearButtonRect))
         {
             CancelSelection(restoreLifted: true);
+            PushUndoSnapshot();
             ClearCanvas();
             PersistCurrent(assets);
             SetStatus("Canvas cleared");
@@ -835,7 +853,7 @@ public sealed class AssetEditorUi
         }
     }
 
-    private void HandleToolButtons()
+    private void HandleToolButtons(AssetLibrary assets)
     {
         if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
         {
@@ -853,6 +871,30 @@ public sealed class AssetEditorUi
         if (Raylib.CheckCollisionPointRec(mouse, _selectToolRect))
         {
             _tool = EditorTool.Select;
+            return;
+        }
+
+        if (Raylib.CheckCollisionPointRec(mouse, _undoButtonRect))
+        {
+            Undo(assets);
+        }
+    }
+
+    private void HandleUndoShortcut(AssetLibrary assets)
+    {
+        if (_nameFocused)
+        {
+            return;
+        }
+
+        bool modifier = Raylib.IsKeyDown(KeyboardKey.KEY_LEFT_CONTROL) ||
+                        Raylib.IsKeyDown(KeyboardKey.KEY_RIGHT_CONTROL) ||
+                        Raylib.IsKeyDown(KeyboardKey.KEY_LEFT_SUPER) ||
+                        Raylib.IsKeyDown(KeyboardKey.KEY_RIGHT_SUPER);
+
+        if (modifier && Raylib.IsKeyPressed(KeyboardKey.KEY_Z))
+        {
+            Undo(assets);
         }
     }
 
@@ -928,6 +970,7 @@ public sealed class AssetEditorUi
 
     private void BeginMove(int grabPx, int grabPy)
     {
+        PushUndoSnapshot();
         _liftedPixels = CopyRegion(_selX, _selY, _selW, _selH);
         ClearRegion(_selX, _selY, _selW, _selH);
         _originalSelX = _selX;
@@ -1066,15 +1109,21 @@ public sealed class AssetEditorUi
 
     private void HandleCanvasPaint(AssetLibrary assets)
     {
-        bool painting = Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT);
-        bool erasing = Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_RIGHT);
-        if (!painting && !erasing)
+        Vector2 mouse = Raylib.GetMousePosition();
+        if (!Raylib.CheckCollisionPointRec(mouse, _canvasRect))
         {
             return;
         }
 
-        Vector2 mouse = Raylib.GetMousePosition();
-        if (!Raylib.CheckCollisionPointRec(mouse, _canvasRect))
+        if (Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT) ||
+            Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_RIGHT))
+        {
+            PushUndoSnapshot();
+        }
+
+        bool painting = Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT);
+        bool erasing = Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_RIGHT);
+        if (!painting && !erasing)
         {
             return;
         }
@@ -1096,6 +1145,59 @@ public sealed class AssetEditorUi
         _pixels[index] = next;
         _pixelsDirty = true;
     }
+
+    private void PushUndoSnapshot()
+    {
+        _undoStack.Add(CaptureSnapshot());
+        if (_undoStack.Count > MaxUndoSteps)
+        {
+            _undoStack.RemoveAt(0);
+        }
+    }
+
+    private CanvasSnapshot CaptureSnapshot()
+    {
+        var copy = new Color[_pixels.Length];
+        _pixels.CopyTo(copy, 0);
+        return new CanvasSnapshot
+        {
+            Width = _width,
+            Height = _height,
+            Pixels = copy,
+        };
+    }
+
+    private void RestoreSnapshot(CanvasSnapshot snapshot)
+    {
+        _width = snapshot.Width;
+        _height = snapshot.Height;
+        _pixels = new Color[snapshot.Pixels.Length];
+        snapshot.Pixels.CopyTo(_pixels, 0);
+        CancelSelection(restoreLifted: false);
+    }
+
+    private void Undo(AssetLibrary assets)
+    {
+        if (_undoStack.Count == 0)
+        {
+            SetStatus("Nothing to undo");
+            return;
+        }
+
+        if (_isMovingSelection)
+        {
+            CancelSelection(restoreLifted: true);
+        }
+
+        RestoreSnapshot(_undoStack[^1]);
+        _undoStack.RemoveAt(_undoStack.Count - 1);
+        _pixelsDirty = true;
+        PersistCurrent(assets);
+        SetStatus("Undone");
+    }
+
+    private void ClearUndoHistory() =>
+        _undoStack.Clear();
 
     private void CommitNameChange(AssetLibrary assets)
     {
@@ -1132,6 +1234,7 @@ public sealed class AssetEditorUi
         _height = 16;
         _pixels = new Color[16 * 16];
         ClearCanvas();
+        ClearUndoHistory();
         CancelSelection(restoreLifted: false);
         _pixelsDirty = false;
         _isPlacing = false;
@@ -1153,6 +1256,7 @@ public sealed class AssetEditorUi
         _selectedFileKey = fileKey;
         ResizeCanvas(definition.Width, definition.Height);
         definition.Pixels.CopyTo(_pixels, 0);
+        ClearUndoHistory();
         CancelSelection(restoreLifted: false);
         assets?.DefineOrReplace(file.Name, definition);
         _pixelsDirty = false;
