@@ -129,8 +129,8 @@ public class Game
 
         foreach (string name in DefinedAssetStore.ListAssetNames())
         {
-            SavedAssetFile file = DefinedAssetStore.LoadAsset(name);
-            assets.DefineOrReplace(file.Name, file.ToDefinition());
+            SavedAsset file = DefinedAssetStore.LoadAsset(name);
+            assets.DefineOrReplace(file.Name, file.Definition);
         }
 
         foreach (SavedPlacementEntry placement in DefinedAssetStore.LoadPlacements())

@@ -706,7 +706,7 @@ public sealed class AssetEditorUi
 
         try
         {
-            SavedAssetFile file = DefinedAssetStore.LoadAsset(fileKey);
+            SavedAsset file = DefinedAssetStore.LoadAsset(fileKey);
             string displayName = file.Name;
 
             DefinedAssetStore.DeleteAsset(fileKey);
@@ -753,8 +753,11 @@ public sealed class AssetEditorUi
         {
             string cloneName = DefinedAssetStore.SuggestCloneName(sourceName);
             PixelAssetDefinition definition = BuildDefinition();
-            SavedAssetFile file = SavedAssetFile.FromDefinition(cloneName, definition);
-            string fileKey = DefinedAssetStore.SaveAsset(file);
+            string fileKey = DefinedAssetStore.SaveAsset(new SavedAsset
+            {
+                Name = cloneName,
+                Definition = definition,
+            });
             assets.DefineOrReplace(cloneName, definition);
             RefreshAssetList();
             SelectAsset(fileKey, assets, persistPending: false);
@@ -1248,9 +1251,9 @@ public sealed class AssetEditorUi
             PersistCurrent(assets);
         }
 
-        SavedAssetFile file = DefinedAssetStore.LoadAsset(name);
+        SavedAsset file = DefinedAssetStore.LoadAsset(name);
         string fileKey = DefinedAssetStore.ResolveAssetFileStem(name);
-        PixelAssetDefinition definition = file.ToDefinition();
+        PixelAssetDefinition definition = file.Definition;
         _nameField.SetText(file.Name);
         _savedFileKey = fileKey;
         _selectedFileKey = fileKey;
@@ -1320,8 +1323,11 @@ public sealed class AssetEditorUi
             }
 
             PixelAssetDefinition definition = BuildDefinition();
-            SavedAssetFile file = SavedAssetFile.FromDefinition(displayName, definition);
-            string fileKey = DefinedAssetStore.SaveAsset(file);
+            string fileKey = DefinedAssetStore.SaveAsset(new SavedAsset
+            {
+                Name = displayName,
+                Definition = definition,
+            });
             assets.DefineOrReplace(displayName, definition);
             _nameField.SetText(displayName);
             _savedFileKey = fileKey;

@@ -1,66 +1,18 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Raylib_cs;
 
 namespace FarmGame;
 
-public sealed class SavedAssetFile
+public sealed class SavedAsset
 {
     public required string Name { get; init; }
-    public required int Width { get; init; }
-    public required int Height { get; init; }
-    public required string[] Pixels { get; init; }
+    public required PixelAssetDefinition Definition { get; init; }
+}
 
-    public PixelAssetDefinition ToDefinition()
-    {
-        if (Pixels.Length != Width * Height)
-        {
-            throw new InvalidDataException($"Asset '{Name}' pixel count does not match {Width}x{Height}.");
-        }
-
-        var colors = new Color[Pixels.Length];
-        for (int i = 0; i < Pixels.Length; i++)
-        {
-            colors[i] = ParsePixel(Pixels[i]);
-        }
-
-        return new PixelAssetDefinition(Width, Height, colors);
-    }
-
-    public static SavedAssetFile FromDefinition(string name, PixelAssetDefinition definition)
-    {
-        var hex = new string[definition.Pixels.Length];
-        for (int i = 0; i < definition.Pixels.Length; i++)
-        {
-            hex[i] = FormatPixel(definition.Pixels[i]);
-        }
-
-        return new SavedAssetFile
-        {
-            Name = name,
-            Width = definition.Width,
-            Height = definition.Height,
-            Pixels = hex,
-        };
-    }
-
-    private static string FormatPixel(Color color) =>
-        $"{color.R:X2}{color.G:X2}{color.B:X2}{color.A:X2}";
-
-    private static Color ParsePixel(string hex)
-    {
-        if (hex.Length != 8)
-        {
-            throw new FormatException($"Expected 8 hex digits, got '{hex}'.");
-        }
-
-        byte r = Convert.ToByte(hex[..2], 16);
-        byte g = Convert.ToByte(hex[2..4], 16);
-        byte b = Convert.ToByte(hex[4..6], 16);
-        byte a = Convert.ToByte(hex[6..8], 16);
-        return new Color(r, g, b, a);
-    }
+public sealed class SavedAssetMeta
+{
+    public required string Name { get; init; }
 }
 
 public sealed class SavedPlacementsFile
@@ -92,9 +44,10 @@ public static class DefinedAssetStore
     public static void EnsureDirectoryExists()
     {
         Directory.CreateDirectory(AssetsDirectory);
+        MigrateLegacyJsonAssets();
     }
 
-    public static string SaveAsset(SavedAssetFile asset)
+    public static string SaveAsset(SavedAsset asset)
     {
         EnsureDirectoryExists();
         string fileName = ToAssetFileName(asset.Name);
@@ -103,25 +56,30 @@ public static class DefinedAssetStore
             throw new InvalidOperationException("Asset name must contain letters or numbers.");
         }
 
-        string path = Path.Combine(AssetsDirectory, $"{fileName}.json");
-        File.WriteAllText(path, JsonSerializer.Serialize(asset, JsonOptions));
+        string pngPath = AssetPngPath(fileName);
+        asset.Definition.SaveToPng(pngPath);
+        SaveMeta(fileName, asset.Name);
         return fileName;
     }
 
-    public static SavedAssetFile LoadAsset(string name)
+    public static SavedAsset LoadAsset(string name)
     {
         string fileName = ResolveAssetFileStem(name);
-        string path = Path.Combine(AssetsDirectory, $"{fileName}.json");
-        return JsonSerializer.Deserialize<SavedAssetFile>(File.ReadAllText(path), JsonOptions)
-            ?? throw new InvalidDataException($"Could not parse asset file '{path}'.");
+        string pngPath = AssetPngPath(fileName);
+        PixelAssetDefinition definition = PixelAssetDefinition.FromPng(pngPath);
+        string displayName = LoadDisplayName(fileName);
+        return new SavedAsset
+        {
+            Name = displayName,
+            Definition = definition,
+        };
     }
 
     public static string ResolveAssetFileStem(string name)
     {
         foreach (string candidate in GetAssetFileNameCandidates(name))
         {
-            string path = Path.Combine(AssetsDirectory, $"{candidate}.json");
-            if (File.Exists(path))
+            if (File.Exists(AssetPngPath(candidate)))
             {
                 return candidate;
             }
@@ -133,9 +91,8 @@ public static class DefinedAssetStore
     public static IReadOnlyList<string> ListAssetNames()
     {
         EnsureDirectoryExists();
-        return Directory.EnumerateFiles(AssetsDirectory, "*.json")
+        return Directory.EnumerateFiles(AssetsDirectory, "*.png")
             .Select(Path.GetFileNameWithoutExtension)
-            .Where(name => !string.Equals(name, "placements", StringComparison.OrdinalIgnoreCase))
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .Select(name => name!)
             .ToList();
@@ -164,10 +121,16 @@ public static class DefinedAssetStore
         try
         {
             string fileName = ResolveAssetFileStem(name);
-            string path = Path.Combine(AssetsDirectory, $"{fileName}.json");
-            if (File.Exists(path))
+            string pngPath = AssetPngPath(fileName);
+            if (File.Exists(pngPath))
             {
-                File.Delete(path);
+                File.Delete(pngPath);
+            }
+
+            string metaPath = AssetMetaPath(fileName);
+            if (File.Exists(metaPath))
+            {
+                File.Delete(metaPath);
             }
         }
         catch (FileNotFoundException)
@@ -229,12 +192,6 @@ public static class DefinedAssetStore
         return SanitizeFileName(name);
     }
 
-    private static string GetCloneRootName(string sourceName)
-    {
-        Match numbered = Regex.Match(sourceName.Trim(), @"^(.+?)\s+\((\d+)\)$");
-        return numbered.Success ? numbered.Groups[1].Value.Trim() : sourceName.Trim();
-    }
-
     public static string SanitizeFileName(string name)
     {
         var chars = name
@@ -242,6 +199,85 @@ public static class DefinedAssetStore
             .Select(c => char.IsLetterOrDigit(c) || c is '_' or '-' ? c : '_')
             .ToArray();
         return new string(chars).Trim('_');
+    }
+
+    public static void MigrateLegacyJsonAssets()
+    {
+        if (!Directory.Exists(AssetsDirectory))
+        {
+            return;
+        }
+
+        foreach (string jsonPath in Directory.EnumerateFiles(AssetsDirectory, "*.json"))
+        {
+            string fileStem = Path.GetFileNameWithoutExtension(jsonPath);
+            if (string.Equals(fileStem, "placements", StringComparison.OrdinalIgnoreCase) ||
+                jsonPath.EndsWith(".meta.json", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string pngPath = AssetPngPath(fileStem);
+            if (File.Exists(pngPath))
+            {
+                continue;
+            }
+
+            LegacySavedAssetFile? legacy = JsonSerializer.Deserialize<LegacySavedAssetFile>(File.ReadAllText(jsonPath), JsonOptions);
+            if (legacy?.Pixels == null)
+            {
+                continue;
+            }
+
+            PixelAssetDefinition definition = legacy.ToDefinition();
+            definition.SaveToPng(pngPath);
+            SaveMeta(fileStem, legacy.Name);
+            File.Delete(jsonPath);
+        }
+    }
+
+    private static string AssetPngPath(string fileStem) =>
+        Path.Combine(AssetsDirectory, $"{fileStem}.png");
+
+    private static string AssetMetaPath(string fileStem) =>
+        Path.Combine(AssetsDirectory, $"{fileStem}.meta.json");
+
+    private static string LoadDisplayName(string fileStem)
+    {
+        string metaPath = AssetMetaPath(fileStem);
+        if (File.Exists(metaPath))
+        {
+            SavedAssetMeta? meta = JsonSerializer.Deserialize<SavedAssetMeta>(File.ReadAllText(metaPath), JsonOptions);
+            if (!string.IsNullOrWhiteSpace(meta?.Name))
+            {
+                return meta.Name;
+            }
+        }
+
+        return fileStem;
+    }
+
+    private static void SaveMeta(string fileStem, string displayName)
+    {
+        string metaPath = AssetMetaPath(fileStem);
+        if (string.Equals(displayName, fileStem, StringComparison.OrdinalIgnoreCase))
+        {
+            if (File.Exists(metaPath))
+            {
+                File.Delete(metaPath);
+            }
+
+            return;
+        }
+
+        var meta = new SavedAssetMeta { Name = displayName };
+        File.WriteAllText(metaPath, JsonSerializer.Serialize(meta, JsonOptions));
+    }
+
+    private static string GetCloneRootName(string sourceName)
+    {
+        Match numbered = Regex.Match(sourceName.Trim(), @"^(.+?)\s+\((\d+)\)$");
+        return numbered.Success ? numbered.Groups[1].Value.Trim() : sourceName.Trim();
     }
 
     private static IEnumerable<string> GetAssetFileNameCandidates(string name)
@@ -265,6 +301,44 @@ public static class DefinedAssetStore
             !string.Equals(sanitized, fromDisplay, StringComparison.OrdinalIgnoreCase))
         {
             yield return sanitized;
+        }
+    }
+
+    private sealed class LegacySavedAssetFile
+    {
+        public required string Name { get; init; }
+        public required int Width { get; init; }
+        public required int Height { get; init; }
+        public required string[] Pixels { get; init; }
+
+        public PixelAssetDefinition ToDefinition()
+        {
+            if (Pixels.Length != Width * Height)
+            {
+                throw new InvalidDataException($"Asset '{Name}' pixel count does not match {Width}x{Height}.");
+            }
+
+            var colors = new Raylib_cs.Color[Pixels.Length];
+            for (int i = 0; i < Pixels.Length; i++)
+            {
+                colors[i] = ParsePixel(Pixels[i]);
+            }
+
+            return new PixelAssetDefinition(Width, Height, colors);
+        }
+
+        private static Raylib_cs.Color ParsePixel(string hex)
+        {
+            if (hex.Length != 8)
+            {
+                throw new FormatException($"Expected 8 hex digits, got '{hex}'.");
+            }
+
+            byte r = Convert.ToByte(hex[..2], 16);
+            byte g = Convert.ToByte(hex[2..4], 16);
+            byte b = Convert.ToByte(hex[4..6], 16);
+            byte a = Convert.ToByte(hex[6..8], 16);
+            return new Raylib_cs.Color(r, g, b, a);
         }
     }
 }

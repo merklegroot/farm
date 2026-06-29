@@ -71,4 +71,54 @@ public sealed class PixelAssetDefinition
         pixels.CopyTo(copy);
         return new PixelAssetDefinition(width, height, copy);
     }
+
+    public static PixelAssetDefinition FromPng(string path)
+    {
+        Image image = Raylib.LoadImage(path);
+        try
+        {
+            return FromImage(image);
+        }
+        finally
+        {
+            Raylib.UnloadImage(image);
+        }
+    }
+
+    public static PixelAssetDefinition FromImage(Image image)
+    {
+        int width = image.Width;
+        int height = image.Height;
+        var pixels = new Color[width * height];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                pixels[y * width + x] = Raylib.GetImageColor(image, x, y);
+            }
+        }
+
+        return new PixelAssetDefinition(width, height, pixels);
+    }
+
+    public void SaveToPng(string path)
+    {
+        Image image = Raylib.GenImageColor(Width, Height, Color.BLANK);
+        for (int y = 0; y < Height; y++)
+        {
+            for (int x = 0; x < Width; x++)
+            {
+                Color color = Pixels[y * Width + x];
+                if (color.A == 0)
+                {
+                    continue;
+                }
+
+                Raylib.ImageDrawPixel(ref image, x, y, color);
+            }
+        }
+
+        Raylib.ExportImage(image, path);
+        Raylib.UnloadImage(image);
+    }
 }

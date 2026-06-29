@@ -145,7 +145,7 @@ public sealed class CropField
 
         try
         {
-            SavedAssetFile file = DefinedAssetStore.LoadAsset(name);
+            SavedAsset file = DefinedAssetStore.LoadAsset(name);
             if (assets.TryGetAsset(file.Name, out asset))
             {
                 return true;
