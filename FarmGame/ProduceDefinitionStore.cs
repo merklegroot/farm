@@ -20,7 +20,7 @@ public static class ProduceDefinitionStore
     };
 
     public static string ProduceDirectory =>
-        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../Assets/produce"));
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../Assets"));
 
     public static void EnsureDirectoryExists() =>
         Directory.CreateDirectory(ProduceDirectory);
@@ -43,7 +43,7 @@ public static class ProduceDefinitionStore
     {
         string fileName = ResolveFileStem(name);
         string path = Path.Combine(ProduceDirectory, $"{fileName}.json");
-        ProduceDefinition? definition = JsonSerializer.Deserialize<ProduceDefinition>(File.ReadAllText(path), JsonOptions);
+        ProduceDefinition? definition = TryLoadDefinition(path);
         return definition ?? throw new InvalidDataException($"Could not parse produce file '{path}'.");
     }
 
@@ -53,7 +53,11 @@ public static class ProduceDefinitionStore
         {
             if (File.Exists(Path.Combine(ProduceDirectory, $"{candidate}.json")))
             {
-                return candidate;
+                ProduceDefinition? definition = TryLoadDefinition(Path.Combine(ProduceDirectory, $"{candidate}.json"));
+                if (definition != null)
+                {
+                    return candidate;
+                }
             }
         }
 
@@ -63,11 +67,17 @@ public static class ProduceDefinitionStore
     public static IReadOnlyList<string> ListNames()
     {
         EnsureDirectoryExists();
-        return Directory.EnumerateFiles(ProduceDirectory, "*.json")
-            .Select(Path.GetFileNameWithoutExtension)
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-            .Select(name => name!)
-            .ToList();
+        var names = new List<string>();
+        foreach (string path in Directory.EnumerateFiles(ProduceDirectory, "*.json"))
+        {
+            if (TryLoadDefinition(path) != null)
+            {
+                names.Add(Path.GetFileNameWithoutExtension(path)!);
+            }
+        }
+
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        return names;
     }
 
     public static void Delete(string name)
@@ -106,6 +116,32 @@ public static class ProduceDefinitionStore
     public static string ToFileName(string name) =>
         DefinedAssetStore.SanitizeFileName(name.Trim());
 
+    private static ProduceDefinition? TryLoadDefinition(string path)
+    {
+        try
+        {
+            ProduceDefinitionFile? file = JsonSerializer.Deserialize<ProduceDefinitionFile>(File.ReadAllText(path), JsonOptions);
+            if (file?.Frames == null || file.Frames.Length == 0)
+            {
+                return null;
+            }
+
+            string name = string.IsNullOrWhiteSpace(file.Name)
+                ? Path.GetFileNameWithoutExtension(path)
+                : file.Name.Trim();
+
+            return new ProduceDefinition
+            {
+                Name = name,
+                Frames = file.Frames,
+            };
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static IEnumerable<string> GetFileNameCandidates(string name)
     {
         string trimmed = name.Trim();
@@ -121,5 +157,11 @@ public static class ProduceDefinitionStore
         {
             yield return sanitized;
         }
+    }
+
+    private sealed class ProduceDefinitionFile
+    {
+        public string? Name { get; init; }
+        public string[]? Frames { get; init; }
     }
 }

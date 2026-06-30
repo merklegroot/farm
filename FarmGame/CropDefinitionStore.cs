@@ -61,7 +61,7 @@ public static class CropDefinitionStore
         try
         {
             CropDefinitionFile? file = JsonSerializer.Deserialize<CropDefinitionFile>(File.ReadAllText(path), JsonOptions);
-            if (file?.Stages == null || file.Stages.Length == 0)
+            if (file?.Stages == null || file.Stages.Length == 0 || file.Frames != null)
             {
                 return null;
             }
@@ -86,5 +86,6 @@ public static class CropDefinitionStore
     {
         public string? Name { get; init; }
         public string[]? Stages { get; init; }
+        public string[]? Frames { get; init; }
     }
 }
