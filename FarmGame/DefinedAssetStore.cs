@@ -12,7 +12,7 @@ public sealed class SavedAsset
 
 public sealed class SavedAssetMeta
 {
-    public required string Name { get; init; }
+    public required string Id { get; init; }
 }
 
 public sealed class SavedPlacementsFile
@@ -163,8 +163,8 @@ public static class DefinedAssetStore
 
         for (int i = 2; i < 1000; i++)
         {
-            string candidate = $"{root} ({i})";
-            if (!existingFiles.Contains(ToAssetFileName(candidate)))
+            string candidate = $"{SanitizeFileName(root)}_{i}";
+            if (!existingFiles.Contains(candidate))
             {
                 return candidate;
             }
@@ -248,9 +248,9 @@ public static class DefinedAssetStore
         if (File.Exists(metaPath))
         {
             SavedAssetMeta? meta = JsonSerializer.Deserialize<SavedAssetMeta>(File.ReadAllText(metaPath), JsonOptions);
-            if (!string.IsNullOrWhiteSpace(meta?.Name))
+            if (!string.IsNullOrWhiteSpace(meta?.Id))
             {
-                return meta.Name;
+                return meta.Id;
             }
         }
 
@@ -270,14 +270,26 @@ public static class DefinedAssetStore
             return;
         }
 
-        var meta = new SavedAssetMeta { Name = displayName };
+        var meta = new SavedAssetMeta { Id = displayName };
         File.WriteAllText(metaPath, JsonSerializer.Serialize(meta, JsonOptions));
     }
 
     private static string GetCloneRootName(string sourceName)
     {
-        Match numbered = Regex.Match(sourceName.Trim(), @"^(.+?)\s+\((\d+)\)$");
-        return numbered.Success ? numbered.Groups[1].Value.Trim() : sourceName.Trim();
+        string trimmed = sourceName.Trim();
+        Match parenNumbered = Regex.Match(trimmed, @"^(.+?)\s+\((\d+)\)$");
+        if (parenNumbered.Success)
+        {
+            return parenNumbered.Groups[1].Value.Trim();
+        }
+
+        Match underscoreNumbered = Regex.Match(trimmed, @"^(.+?)_(\d+)$");
+        if (underscoreNumbered.Success)
+        {
+            return underscoreNumbered.Groups[1].Value.Trim();
+        }
+
+        return trimmed;
     }
 
     private static IEnumerable<string> GetAssetFileNameCandidates(string name)

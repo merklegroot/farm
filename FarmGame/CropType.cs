@@ -48,9 +48,9 @@ public static class CropTypeInfo
 
         return type switch
         {
-            CropType.Carrot => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
-            CropType.Wheat => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
-            _ => ["Seeds", "Sprout", "Sprout (2)", "Sprout (3)", "Sprout (4)", "Sprout (5)"],
+            CropType.Carrot => ["Seeds", "Sprout", "Sprout_2", "Sprout_3", "Sprout_4", "Sprout_5"],
+            CropType.Wheat => ["Seeds", "Sprout", "Sprout_2", "Sprout_3", "Sprout_4", "Sprout_5"],
+            _ => ["Seeds", "Sprout", "Sprout_2", "Sprout_3", "Sprout_4", "Sprout_5"],
         };
     }
 }
