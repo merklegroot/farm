@@ -14,10 +14,12 @@ public sealed class AssetEditorUi
     private const int MinCanvasSize = 1;
     private const int MaxCanvasSize = 32;
     private const int CellSize = 10;
-    private const int PanelWidth = 320;
+    private const int EditorColumnWidth = 320;
+    private const int AssetColumnWidth = 168;
+    private const int ColumnGap = 16;
+    private const int PanelWidth = AssetColumnWidth + ColumnGap + EditorColumnWidth;
     private const int PanelPadding = 16;
     private const int AssetRowHeight = 22;
-    private const int AssetListVisibleRows = 6;
     private const int MaxUndoSteps = 50;
 
     private sealed class CanvasSnapshot
@@ -77,6 +79,10 @@ public sealed class AssetEditorUi
     private string _statusMessage = "";
     private float _statusTimer;
     private int _assetListScroll;
+    private int _assetListVisibleRows = 6;
+    private float _leftColumnX;
+    private float _editorColumnX;
+    private float _editorColumnWidth;
     private Rectangle _panelRect;
     private Rectangle _canvasRect;
     private Rectangle _nameFieldRect;
@@ -227,10 +233,18 @@ public sealed class AssetEditorUi
         Raylib.DrawRectangleRec(_panelRect, new Color(20, 22, 28, 245));
         Raylib.DrawRectangleLinesEx(_panelRect, 2f, new Color(90, 95, 110, 255));
 
-        int x = (int)_panelRect.X + PanelPadding;
-        int y = (int)_panelRect.Y + PanelPadding;
-        UiText.DrawText("Asset Editor", x, y, 22, Color.WHITE);
-        y += 30;
+        float dividerX = _panelRect.X + AssetColumnWidth + ColumnGap * 0.5f;
+        Raylib.DrawLineV(
+            new Vector2(dividerX, _panelRect.Y + PanelPadding + 28),
+            new Vector2(dividerX, _panelRect.Y + _panelRect.Height - PanelPadding),
+            new Color(60, 65, 80, 255));
+
+        UiText.DrawText("Asset Editor", (int)_panelRect.X + PanelPadding, (int)_panelRect.Y + PanelPadding, 22, Color.WHITE);
+
+        DrawAssetListColumn();
+
+        int x = (int)_editorColumnX;
+        int y = (int)(_panelRect.Y + PanelPadding + 30);
 
         UiText.DrawText("Name", x, y, 14, new Color(150, 155, 170, 255));
         y += 18;
@@ -259,13 +273,10 @@ public sealed class AssetEditorUi
         y += _colorPicker.Height + 8;
 
         DrawActionButtons(x, y);
-        y += 36;
-
-        DrawAssetList(x, y);
 
         if (_statusTimer > 0f)
         {
-            UiText.DrawText(_statusMessage, x, (int)(_panelRect.Y + _panelRect.Height - 22), 14, new Color(170, 220, 150, 255));
+            UiText.DrawText(_statusMessage, (int)_panelRect.X + PanelPadding, (int)(_panelRect.Y + _panelRect.Height - 22), 14, new Color(170, 220, 150, 255));
         }
     }
 
@@ -309,27 +320,34 @@ public sealed class AssetEditorUi
     private void LayoutPanel(int screenWidth, int screenHeight)
     {
         int canvasBlock = _height * CellSize;
-        int assetListBlock = 18 + 28 + AssetListVisibleRows * AssetRowHeight + 4;
         int colorPickerBlock = _colorPicker.Height + 8;
-        int panelHeight = PanelPadding * 2 + 30 + 18 + 34 + 24 + 8 + 22 + canvasBlock + 12 + 32 + 28 + colorPickerBlock + 36 + assetListBlock + 24;
+        int editorContentHeight = 18 + 34 + 24 + 8 + 22 + canvasBlock + 12 + 32 + 28 + colorPickerBlock + 36;
+        int panelHeight = PanelPadding * 2 + 30 + editorContentHeight + 24;
         _panelRect = new Rectangle(screenWidth - PanelWidth - 12, 12, PanelWidth, panelHeight);
-        _nameFieldRect = new Rectangle(_panelRect.X + PanelPadding, _panelRect.Y + PanelPadding + 30 + 18, PanelWidth - PanelPadding * 2, 28);
+
+        _leftColumnX = _panelRect.X + PanelPadding;
+        _editorColumnX = _panelRect.X + AssetColumnWidth + ColumnGap + PanelPadding;
+        _editorColumnWidth = EditorColumnWidth - PanelPadding * 2;
+
+        float contentY = _panelRect.Y + PanelPadding + 30;
+
+        _nameFieldRect = new Rectangle(_editorColumnX, contentY + 18, _editorColumnWidth, 28);
         _canvasRect = new Rectangle(
-            _panelRect.X + PanelPadding,
+            _editorColumnX,
             _nameFieldRect.Y + 34 + 24 + 8 + 22,
             _width * CellSize,
             canvasBlock);
 
         float toolsY = _canvasRect.Y + _canvasRect.Height + 12;
-        _brushToolRect = new Rectangle(_panelRect.X + PanelPadding, toolsY, 52, 24);
-        _selectToolRect = new Rectangle(_panelRect.X + PanelPadding + 58, toolsY, 52, 24);
-        _undoButtonRect = new Rectangle(_panelRect.X + PanelPadding + 116, toolsY, 52, 24);
+        _brushToolRect = new Rectangle(_editorColumnX, toolsY, 52, 24);
+        _selectToolRect = new Rectangle(_editorColumnX + 58, toolsY, 52, 24);
+        _undoButtonRect = new Rectangle(_editorColumnX + 116, toolsY, 52, 24);
 
         const int swatch = 24;
         const int gap = 4;
         float paletteY = toolsY + 32;
         int paletteWidth = Palette.Length * (swatch + gap) + swatch + gap + swatch;
-        _paletteRect = new Rectangle(_panelRect.X + PanelPadding, paletteY, paletteWidth, swatch);
+        _paletteRect = new Rectangle(_editorColumnX, paletteY, paletteWidth, swatch);
         _customSwatchRect = new Rectangle(
             _paletteRect.X + Palette.Length * (swatch + gap) + swatch + gap,
             paletteY,
@@ -337,35 +355,22 @@ public sealed class AssetEditorUi
             swatch);
 
         float colorPickerY = paletteY + 28;
-        _colorPickerRect = new Rectangle(_panelRect.X + PanelPadding, colorPickerY, PanelWidth - PanelPadding * 2, _colorPicker.Height);
+        _colorPickerRect = new Rectangle(_editorColumnX, colorPickerY, _editorColumnWidth, _colorPicker.Height);
 
         float actionY = colorPickerY + _colorPicker.Height + 8;
-        _clearButtonRect = new Rectangle(_panelRect.X + PanelPadding, actionY, 68, 28);
-        _placeButtonRect = new Rectangle(_panelRect.X + PanelPadding + 74, actionY, 68, 28);
-        _closeButtonRect = new Rectangle(_panelRect.X + PanelPadding + 148, actionY, 68, 28);
+        _clearButtonRect = new Rectangle(_editorColumnX, actionY, 68, 28);
+        _placeButtonRect = new Rectangle(_editorColumnX + 74, actionY, 68, 28);
+        _closeButtonRect = new Rectangle(_editorColumnX + 148, actionY, 68, 28);
 
-        _assetListRect = new Rectangle(
-            _panelRect.X + PanelPadding,
-            actionY + 36 + 28,
-            PanelWidth - PanelPadding * 2,
-            AssetListVisibleRows * AssetRowHeight);
+        float assetHeaderY = contentY;
+        _newAssetButtonRect = new Rectangle(_leftColumnX, assetHeaderY + 18, 52, 22);
+        _cloneAssetButtonRect = new Rectangle(_leftColumnX + 56, assetHeaderY + 18, 52, 22);
+        _deleteAssetButtonRect = new Rectangle(_leftColumnX + 112, assetHeaderY + 18, 52, 22);
 
-        float assetHeaderY = actionY + 36;
-        _deleteAssetButtonRect = new Rectangle(
-            _panelRect.X + PanelWidth - PanelPadding - 52 - 4 - 52 - 4 - 52,
-            assetHeaderY - 4,
-            52,
-            22);
-        _cloneAssetButtonRect = new Rectangle(
-            _panelRect.X + PanelWidth - PanelPadding - 52 - 4 - 52,
-            assetHeaderY - 4,
-            52,
-            22);
-        _newAssetButtonRect = new Rectangle(
-            _panelRect.X + PanelWidth - PanelPadding - 52,
-            assetHeaderY - 4,
-            52,
-            22);
+        float listY = assetHeaderY + 48;
+        float listHeight = _panelRect.Y + _panelRect.Height - PanelPadding - 24 - listY;
+        _assetListRect = new Rectangle(_leftColumnX, listY, AssetColumnWidth, listHeight);
+        _assetListVisibleRows = Math.Max(1, (int)(listHeight / AssetRowHeight));
     }
 
     private void DrawDimensionRow(int x, ref int y)
@@ -381,7 +386,7 @@ public sealed class AssetEditorUi
 
     private void DrawCanvas(int y)
     {
-        _canvasRect = new Rectangle(_panelRect.X + PanelPadding, y, _width * CellSize, _height * CellSize);
+        _canvasRect = new Rectangle(_editorColumnX, y, _width * CellSize, _height * CellSize);
 
         Raylib.DrawRectangleRec(_canvasRect, new Color(12, 13, 18, 255));
         Raylib.DrawRectangleLinesEx(_canvasRect, 1f, new Color(70, 75, 90, 255));
@@ -527,27 +532,28 @@ public sealed class AssetEditorUi
         DrawButton(_closeButtonRect, "Close", false);
     }
 
-    private void DrawAssetList(int x, int y)
+    private void DrawAssetListColumn()
     {
+        int x = (int)_leftColumnX;
+        int y = (int)(_panelRect.Y + PanelPadding + 30);
         UiText.DrawText("Assets", x, y, 14, new Color(150, 155, 170, 255));
-        DrawButton(_deleteAssetButtonRect, "Delete", false);
-        DrawButton(_cloneAssetButtonRect, "Clone", false);
         DrawButton(_newAssetButtonRect, "New", false);
+        DrawButton(_cloneAssetButtonRect, "Clone", false);
+        DrawButton(_deleteAssetButtonRect, "Delete", false);
 
-        y += 28;
         Raylib.DrawRectangleRec(_assetListRect, new Color(12, 13, 18, 255));
         Raylib.DrawRectangleLinesEx(_assetListRect, 1f, new Color(70, 75, 90, 255));
 
         if (_savedNames.Count == 0)
         {
-            UiText.DrawText("(none yet — paint to create)", x + 8, y + 6, 14, new Color(110, 115, 130, 255));
+            UiText.DrawText("(none yet)", (int)_assetListRect.X + 8, (int)_assetListRect.Y + 6, 14, new Color(110, 115, 130, 255));
             return;
         }
 
-        int maxScroll = Math.Max(0, _savedNames.Count - AssetListVisibleRows);
+        int maxScroll = Math.Max(0, _savedNames.Count - _assetListVisibleRows);
         _assetListScroll = Math.Clamp(_assetListScroll, 0, maxScroll);
 
-        for (int row = 0; row < AssetListVisibleRows; row++)
+        for (int row = 0; row < _assetListVisibleRows; row++)
         {
             int index = _assetListScroll + row;
             if (index >= _savedNames.Count)
@@ -602,7 +608,7 @@ public sealed class AssetEditorUi
         }
 
         Vector2 mouse = Raylib.GetMousePosition();
-        int x = (int)_panelRect.X + PanelPadding;
+        int x = (int)_editorColumnX;
         int y = (int)_nameFieldRect.Y + 34;
 
         if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x + 42, y - 2, 22, 22)))
@@ -804,6 +810,11 @@ public sealed class AssetEditorUi
         }
 
         int row = (int)((mouse.Y - _assetListRect.Y) / AssetRowHeight);
+        if (row < 0 || row >= _assetListVisibleRows)
+        {
+            return;
+        }
+
         int index = _assetListScroll + row;
         if (index < 0 || index >= _savedNames.Count)
         {
@@ -815,7 +826,7 @@ public sealed class AssetEditorUi
 
     private void HandleAssetListScroll()
     {
-        if (_savedNames.Count <= AssetListVisibleRows)
+        if (_savedNames.Count <= _assetListVisibleRows)
         {
             return;
         }
@@ -833,7 +844,7 @@ public sealed class AssetEditorUi
         }
 
         _assetListScroll -= (int)wheel;
-        _assetListScroll = Math.Clamp(_assetListScroll, 0, _savedNames.Count - AssetListVisibleRows);
+        _assetListScroll = Math.Clamp(_assetListScroll, 0, _savedNames.Count - _assetListVisibleRows);
     }
 
     private void HandlePaletteInput()
@@ -1346,9 +1357,9 @@ public sealed class AssetEditorUi
         {
             _assetListScroll = index;
         }
-        else if (index >= _assetListScroll + AssetListVisibleRows)
+        else if (index >= _assetListScroll + _assetListVisibleRows)
         {
-            _assetListScroll = index - AssetListVisibleRows + 1;
+            _assetListScroll = index - _assetListVisibleRows + 1;
         }
     }
 
