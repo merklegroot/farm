@@ -40,6 +40,7 @@ public sealed class AssetEditorUi
     ];
 
     private readonly SimpleTextField _nameField = new("new_asset");
+    private readonly ColorPickerUi _colorPicker = new();
     private readonly List<CanvasSnapshot> _undoStack = [];
     private Color[] _pixels = new Color[16 * 16];
     private int _width = 16;
@@ -48,6 +49,7 @@ public sealed class AssetEditorUi
     private bool _isPlacing;
     private EditorTool _tool = EditorTool.Brush;
     private int _selectedColorIndex;
+    private bool _useCustomColor;
     private bool _useEraser;
     private bool _nameFocused;
     private bool _wasNameFocused;
@@ -86,6 +88,8 @@ public sealed class AssetEditorUi
     private Rectangle _selectToolRect;
     private Rectangle _undoButtonRect;
     private Rectangle _paletteRect;
+    private Rectangle _customSwatchRect;
+    private Rectangle _colorPickerRect;
     private Rectangle _clearButtonRect;
     private Rectangle _placeButtonRect;
     private Rectangle _closeButtonRect;
@@ -164,6 +168,7 @@ public sealed class AssetEditorUi
         if (!_isPlacing)
         {
             HandlePaletteInput();
+            HandleColorPickerInput();
             if (_tool == EditorTool.Brush)
             {
                 HandleCanvasPaint(assets);
@@ -248,7 +253,10 @@ public sealed class AssetEditorUi
         y += 32;
 
         DrawPalette(x, y);
-        y += 36;
+        y += 28;
+
+        _colorPicker.Draw(x, y);
+        y += _colorPicker.Height + 8;
 
         DrawActionButtons(x, y);
         y += 36;
@@ -302,7 +310,8 @@ public sealed class AssetEditorUi
     {
         int canvasBlock = _height * CellSize;
         int assetListBlock = 18 + 28 + AssetListVisibleRows * AssetRowHeight + 4;
-        int panelHeight = PanelPadding * 2 + 30 + 18 + 34 + 24 + 8 + 22 + canvasBlock + 12 + 32 + 36 + 36 + assetListBlock + 24;
+        int colorPickerBlock = _colorPicker.Height + 8;
+        int panelHeight = PanelPadding * 2 + 30 + 18 + 34 + 24 + 8 + 22 + canvasBlock + 12 + 32 + 28 + colorPickerBlock + 36 + assetListBlock + 24;
         _panelRect = new Rectangle(screenWidth - PanelWidth - 12, 12, PanelWidth, panelHeight);
         _nameFieldRect = new Rectangle(_panelRect.X + PanelPadding, _panelRect.Y + PanelPadding + 30 + 18, PanelWidth - PanelPadding * 2, 28);
         _canvasRect = new Rectangle(
@@ -319,10 +328,18 @@ public sealed class AssetEditorUi
         const int swatch = 24;
         const int gap = 4;
         float paletteY = toolsY + 32;
-        int paletteWidth = Palette.Length * (swatch + gap) + swatch;
+        int paletteWidth = Palette.Length * (swatch + gap) + swatch + gap + swatch;
         _paletteRect = new Rectangle(_panelRect.X + PanelPadding, paletteY, paletteWidth, swatch);
+        _customSwatchRect = new Rectangle(
+            _paletteRect.X + Palette.Length * (swatch + gap) + swatch + gap,
+            paletteY,
+            swatch,
+            swatch);
 
-        float actionY = paletteY + 36;
+        float colorPickerY = paletteY + 28;
+        _colorPickerRect = new Rectangle(_panelRect.X + PanelPadding, colorPickerY, PanelWidth - PanelPadding * 2, _colorPicker.Height);
+
+        float actionY = colorPickerY + _colorPicker.Height + 8;
         _clearButtonRect = new Rectangle(_panelRect.X + PanelPadding, actionY, 68, 28);
         _placeButtonRect = new Rectangle(_panelRect.X + PanelPadding + 74, actionY, 68, 28);
         _closeButtonRect = new Rectangle(_panelRect.X + PanelPadding + 148, actionY, 68, 28);
@@ -489,14 +506,18 @@ public sealed class AssetEditorUi
         {
             var rect = new Rectangle(x + i * (swatch + gap), paletteY, swatch, swatch);
             Raylib.DrawRectangleRec(rect, Palette[i]);
-            Raylib.DrawRectangleLinesEx(rect, (!_useEraser && i == _selectedColorIndex) ? 2f : 1f,
-                (!_useEraser && i == _selectedColorIndex) ? new Color(240, 200, 80, 255) : new Color(70, 75, 90, 255));
+            Raylib.DrawRectangleLinesEx(rect, (!_useEraser && !_useCustomColor && i == _selectedColorIndex) ? 2f : 1f,
+                (!_useEraser && !_useCustomColor && i == _selectedColorIndex) ? new Color(240, 200, 80, 255) : new Color(70, 75, 90, 255));
         }
 
         var eraserRect = new Rectangle(x + Palette.Length * (swatch + gap), paletteY, swatch, swatch);
         Raylib.DrawRectangleRec(eraserRect, new Color(32, 35, 42, 255));
         UiText.DrawText("X", (int)eraserRect.X + 7, (int)eraserRect.Y + 3, 16, Color.LIGHTGRAY);
         Raylib.DrawRectangleLinesEx(eraserRect, _useEraser ? 2f : 1f, _useEraser ? new Color(240, 200, 80, 255) : new Color(70, 75, 90, 255));
+
+        Raylib.DrawRectangleRec(_customSwatchRect, _colorPicker.Color);
+        Raylib.DrawRectangleLinesEx(_customSwatchRect, _useCustomColor ? 2f : 1f,
+            _useCustomColor ? new Color(240, 200, 80, 255) : new Color(70, 75, 90, 255));
     }
 
     private void DrawActionButtons(int x, int y)
@@ -843,6 +864,8 @@ public sealed class AssetEditorUi
                 CancelSelection(restoreLifted: true);
                 _selectedColorIndex = i;
                 _useEraser = false;
+                _useCustomColor = false;
+                _colorPicker.SetColor(Palette[i]);
                 return;
             }
         }
@@ -853,7 +876,33 @@ public sealed class AssetEditorUi
             _tool = EditorTool.Brush;
             CancelSelection(restoreLifted: true);
             _useEraser = true;
+            _useCustomColor = false;
+            return;
         }
+
+        if (Raylib.CheckCollisionPointRec(mouse, _customSwatchRect))
+        {
+            _tool = EditorTool.Brush;
+            CancelSelection(restoreLifted: true);
+            _useEraser = false;
+            _useCustomColor = true;
+        }
+    }
+
+    private void HandleColorPickerInput()
+    {
+        bool allowInput = !_nameFocused && !_isPlacing;
+        if (allowInput &&
+            Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT) &&
+            _colorPicker.ContainsPoint(Raylib.GetMousePosition()))
+        {
+            _tool = EditorTool.Brush;
+            CancelSelection(restoreLifted: true);
+            _useEraser = false;
+            _useCustomColor = true;
+        }
+
+        _colorPicker.Update(allowInput);
     }
 
     private void HandleToolButtons(AssetLibrary assets)
@@ -1138,7 +1187,11 @@ public sealed class AssetEditorUi
             return;
         }
 
-        Color next = erasing || _useEraser ? Color.BLANK : Palette[_selectedColorIndex];
+        Color next = erasing || _useEraser
+            ? Color.BLANK
+            : _useCustomColor
+                ? _colorPicker.Color
+                : Palette[_selectedColorIndex];
         int index = py * _width + px;
         if (_pixels[index].Equals(next))
         {
