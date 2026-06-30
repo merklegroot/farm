@@ -5,6 +5,12 @@ namespace FarmGame;
 
 public sealed class AssetEditorUi
 {
+    private enum EditorSection
+    {
+        Assets,
+        Produce,
+    }
+
     private enum EditorTool
     {
         Brush,
@@ -43,12 +49,14 @@ public sealed class AssetEditorUi
 
     private readonly SimpleTextField _nameField = new("new_asset");
     private readonly ColorPickerUi _colorPicker = new();
+    private readonly ProduceEditorUi _produceEditor = new();
     private readonly List<CanvasSnapshot> _undoStack = [];
     private Color[] _pixels = new Color[16 * 16];
     private int _width = 16;
     private int _height = 16;
     private bool _isOpen;
     private bool _isPlacing;
+    private EditorSection _section = EditorSection.Assets;
     private EditorTool _tool = EditorTool.Brush;
     private int _selectedColorIndex;
     private bool _useCustomColor;
@@ -99,7 +107,14 @@ public sealed class AssetEditorUi
     private Rectangle _clearButtonRect;
     private Rectangle _placeButtonRect;
     private Rectangle _closeButtonRect;
+    private Rectangle _assetsTabRect;
+    private Rectangle _produceTabRect;
     private IReadOnlyList<string> _savedNames = [];
+
+    public AssetEditorUi()
+    {
+        _produceEditor.SetStatusHandler(SetStatus);
+    }
 
     public bool IsOpen => _isOpen;
     public bool IsPlacing => _isPlacing;
@@ -109,6 +124,7 @@ public sealed class AssetEditorUi
         if (_isOpen)
         {
             PersistCurrent(assets);
+            _produceEditor.OnClose();
             _isOpen = false;
             _isPlacing = false;
             return;
@@ -116,7 +132,9 @@ public sealed class AssetEditorUi
 
         _isOpen = true;
         _isPlacing = false;
+        _section = EditorSection.Assets;
         RefreshAssetList();
+        _produceEditor.OnOpen();
 
         if (_selectedFileKey != null && _savedNames.Contains(_selectedFileKey, StringComparer.OrdinalIgnoreCase))
         {
@@ -151,6 +169,7 @@ public sealed class AssetEditorUi
             CancelSelection(restoreLifted: true);
         }
 
+        HandleSectionTabs(assets);
         HandleFocus();
         _nameField.Update(_nameFocused);
 
@@ -160,6 +179,17 @@ public sealed class AssetEditorUi
         }
 
         _wasNameFocused = _nameFocused;
+
+        if (_section == EditorSection.Produce)
+        {
+            bool allowInput = !_produceEditor.IsNameFieldFocused && !_isPlacing;
+            _produceEditor.Update(allowInput);
+            Vector2 mouse = Raylib.GetMousePosition();
+            _produceEditor.HandleProduceListScroll(mouse);
+            _produceEditor.HandleFrameListScroll(mouse);
+            _produceEditor.HandleAssetPickerScroll(mouse);
+            return;
+        }
 
         HandlePropertyButtons(assets);
         HandleButtons(assets);
@@ -240,11 +270,28 @@ public sealed class AssetEditorUi
             new Color(60, 65, 80, 255));
 
         UiText.DrawText("Asset Editor", (int)_panelRect.X + PanelPadding, (int)_panelRect.Y + PanelPadding, 22, Color.WHITE);
+        DrawSectionTabs();
+
+        float contentY = _panelRect.Y + PanelPadding + 58;
+
+        if (_section == EditorSection.Produce)
+        {
+            _produceEditor.DrawLeftColumn(contentY);
+            _produceEditor.DrawEditorColumn(contentY);
+            DrawButton(_closeButtonRect, "Close", false);
+
+            if (_statusTimer > 0f)
+            {
+                UiText.DrawText(_statusMessage, (int)_panelRect.X + PanelPadding, (int)(_panelRect.Y + _panelRect.Height - 22), 14, new Color(170, 220, 150, 255));
+            }
+
+            return;
+        }
 
         DrawAssetListColumn();
 
         int x = (int)_editorColumnX;
-        int y = (int)(_panelRect.Y + PanelPadding + 30);
+        int y = (int)contentY;
 
         UiText.DrawText("Name", x, y, 14, new Color(150, 155, 170, 255));
         y += 18;
@@ -321,15 +368,21 @@ public sealed class AssetEditorUi
     {
         int canvasBlock = _height * CellSize;
         int colorPickerBlock = _colorPicker.Height + 8;
-        int editorContentHeight = 18 + 34 + 24 + 8 + 22 + canvasBlock + 12 + 32 + 28 + colorPickerBlock + 36;
-        int panelHeight = PanelPadding * 2 + 30 + editorContentHeight + 24;
+        int assetEditorHeight = 18 + 34 + 24 + 8 + 22 + canvasBlock + 12 + 32 + 28 + colorPickerBlock + 36;
+        int produceEditorHeight = _produceEditor.ContentHeight + 36;
+        int editorContentHeight = Math.Max(assetEditorHeight, produceEditorHeight);
+        int panelHeight = PanelPadding * 2 + 58 + editorContentHeight + 24;
         _panelRect = new Rectangle(screenWidth - PanelWidth - 12, 12, PanelWidth, panelHeight);
 
         _leftColumnX = _panelRect.X + PanelPadding;
         _editorColumnX = _panelRect.X + AssetColumnWidth + ColumnGap + PanelPadding;
         _editorColumnWidth = EditorColumnWidth - PanelPadding * 2;
 
-        float contentY = _panelRect.Y + PanelPadding + 30;
+        float tabY = _panelRect.Y + PanelPadding + 30;
+        _assetsTabRect = new Rectangle(_leftColumnX, tabY, 78, 22);
+        _produceTabRect = new Rectangle(_leftColumnX + 84, tabY, 78, 22);
+
+        float contentY = _panelRect.Y + PanelPadding + 58;
 
         _nameFieldRect = new Rectangle(_editorColumnX, contentY + 18, _editorColumnWidth, 28);
         _canvasRect = new Rectangle(
@@ -371,6 +424,53 @@ public sealed class AssetEditorUi
         float listHeight = _panelRect.Y + _panelRect.Height - PanelPadding - 24 - listY;
         _assetListRect = new Rectangle(_leftColumnX, listY, AssetColumnWidth, listHeight);
         _assetListVisibleRows = Math.Max(1, (int)(listHeight / AssetRowHeight));
+
+        _produceEditor.Layout(_panelRect, _leftColumnX, _editorColumnX, _editorColumnWidth, contentY, _assetListVisibleRows);
+
+        if (_section == EditorSection.Produce)
+        {
+            _closeButtonRect = new Rectangle(_editorColumnX, contentY + _produceEditor.ContentHeight + 8, 68, 28);
+        }
+    }
+
+    private void DrawSectionTabs()
+    {
+        DrawButton(_assetsTabRect, "Assets", _section == EditorSection.Assets);
+        DrawButton(_produceTabRect, "Produce", _section == EditorSection.Produce);
+    }
+
+    private void HandleSectionTabs(AssetLibrary assets)
+    {
+        if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
+        {
+            return;
+        }
+
+        Vector2 mouse = Raylib.GetMousePosition();
+        if (Raylib.CheckCollisionPointRec(mouse, _assetsTabRect) && _section != EditorSection.Assets)
+        {
+            _produceEditor.OnClose();
+            _section = EditorSection.Assets;
+            _isPlacing = false;
+            return;
+        }
+
+        if (Raylib.CheckCollisionPointRec(mouse, _produceTabRect) && _section != EditorSection.Produce)
+        {
+            PersistCurrent(assets);
+            _section = EditorSection.Produce;
+            _isPlacing = false;
+            _produceEditor.OnOpen();
+            return;
+        }
+
+        if (_section == EditorSection.Produce &&
+            Raylib.CheckCollisionPointRec(mouse, _closeButtonRect))
+        {
+            _produceEditor.OnClose();
+            _isOpen = false;
+            _isPlacing = false;
+        }
     }
 
     private void DrawDimensionRow(int x, ref int y)
@@ -535,8 +635,8 @@ public sealed class AssetEditorUi
     private void DrawAssetListColumn()
     {
         int x = (int)_leftColumnX;
-        int y = (int)(_panelRect.Y + PanelPadding + 30);
-        UiText.DrawText("Assets", x, y, 14, new Color(150, 155, 170, 255));
+        float contentY = _panelRect.Y + PanelPadding + 58;
+        UiText.DrawText("Assets", x, (int)contentY, 14, new Color(150, 155, 170, 255));
         DrawButton(_newAssetButtonRect, "New", false);
         DrawButton(_cloneAssetButtonRect, "Clone", false);
         DrawButton(_deleteAssetButtonRect, "Delete", false);
@@ -597,6 +697,12 @@ public sealed class AssetEditorUi
         }
 
         Vector2 mouse = Raylib.GetMousePosition();
+        if (_section == EditorSection.Produce)
+        {
+            _produceEditor.HandleFocus(mouse);
+            return;
+        }
+
         _nameFocused = Raylib.CheckCollisionPointRec(mouse, _nameFieldRect);
     }
 
