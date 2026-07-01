@@ -15,6 +15,7 @@ public sealed class AssetEditorUi
     {
         Brush,
         Select,
+        Eyedropper,
     }
 
     private const int MinCanvasSize = 1;
@@ -100,6 +101,7 @@ public sealed class AssetEditorUi
     private Rectangle _deleteAssetButtonRect;
     private Rectangle _brushToolRect;
     private Rectangle _selectToolRect;
+    private Rectangle _eyedropperToolRect;
     private Rectangle _undoButtonRect;
     private Rectangle _paletteRect;
     private Rectangle _customSwatchRect;
@@ -205,7 +207,11 @@ public sealed class AssetEditorUi
         {
             HandlePaletteInput();
             HandleColorPickerInput();
-            if (_tool == EditorTool.Brush)
+            if (_tool == EditorTool.Eyedropper)
+            {
+                HandleCanvasEyedropper();
+            }
+            else if (_tool == EditorTool.Brush)
             {
                 HandleCanvasPaint(assets);
             }
@@ -303,6 +309,7 @@ public sealed class AssetEditorUi
 
         string mode = _isPlacing ? "Click the map to place"
             : _tool == EditorTool.Select ? "Drag to select, then drag selection to move"
+            : _tool == EditorTool.Eyedropper ? "Click a pixel to pick its color"
             : "Ctrl+Z undo · changes save automatically";
         UiText.DrawText(mode, x, y, 15, new Color(180, 185, 195, 255));
         y += 22;
@@ -394,7 +401,8 @@ public sealed class AssetEditorUi
         float toolsY = _canvasRect.Y + _canvasRect.Height + 12;
         _brushToolRect = new Rectangle(_editorColumnX, toolsY, 52, 24);
         _selectToolRect = new Rectangle(_editorColumnX + 58, toolsY, 52, 24);
-        _undoButtonRect = new Rectangle(_editorColumnX + 116, toolsY, 52, 24);
+        _eyedropperToolRect = new Rectangle(_editorColumnX + 116, toolsY, 52, 24);
+        _undoButtonRect = new Rectangle(_editorColumnX + 174, toolsY, 52, 24);
 
         const int swatch = 24;
         const int gap = 4;
@@ -598,6 +606,7 @@ public sealed class AssetEditorUi
     {
         DrawButton(_brushToolRect, "Brush", _tool == EditorTool.Brush);
         DrawButton(_selectToolRect, "Select", _tool == EditorTool.Select);
+        DrawButton(_eyedropperToolRect, "Pick", _tool == EditorTool.Eyedropper);
         DrawButton(_undoButtonRect, "Undo", false);
     }
 
@@ -962,7 +971,8 @@ public sealed class AssetEditorUi
 
         Vector2 mouse = Raylib.GetMousePosition();
         if (Raylib.CheckCollisionPointRec(mouse, _brushToolRect) ||
-            Raylib.CheckCollisionPointRec(mouse, _selectToolRect))
+            Raylib.CheckCollisionPointRec(mouse, _selectToolRect) ||
+            Raylib.CheckCollisionPointRec(mouse, _eyedropperToolRect))
         {
             return;
         }
@@ -1040,6 +1050,13 @@ public sealed class AssetEditorUi
         if (Raylib.CheckCollisionPointRec(mouse, _selectToolRect))
         {
             _tool = EditorTool.Select;
+            return;
+        }
+
+        if (Raylib.CheckCollisionPointRec(mouse, _eyedropperToolRect))
+        {
+            _tool = EditorTool.Eyedropper;
+            CancelSelection(restoreLifted: true);
             return;
         }
 
@@ -1274,6 +1291,50 @@ public sealed class AssetEditorUi
                 _pixels[cy * _width + cx] = color;
             }
         }
+    }
+
+    private void HandleCanvasEyedropper()
+    {
+        if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
+        {
+            return;
+        }
+
+        Vector2 mouse = Raylib.GetMousePosition();
+        if (!TryGetCanvasPixel(mouse, out int px, out int py))
+        {
+            return;
+        }
+
+        Color picked = _pixels[py * _width + px];
+        ApplyPickedColor(picked);
+        _tool = EditorTool.Brush;
+    }
+
+    private void ApplyPickedColor(Color color)
+    {
+        if (color.A == 0)
+        {
+            _useEraser = true;
+            _useCustomColor = false;
+            return;
+        }
+
+        for (int i = 0; i < Palette.Length; i++)
+        {
+            if (Palette[i].Equals(color))
+            {
+                _selectedColorIndex = i;
+                _useEraser = false;
+                _useCustomColor = false;
+                _colorPicker.SetColor(color);
+                return;
+            }
+        }
+
+        _colorPicker.SetColor(color);
+        _useEraser = false;
+        _useCustomColor = true;
     }
 
     private void HandleCanvasPaint(AssetLibrary assets)
