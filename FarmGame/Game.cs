@@ -11,6 +11,7 @@ public class Game
     private const string Title = "Farm";
     private const string MapTmxRelativePath = "../../../../tiled/tilemap.tmx";
     private const int DemoPlotTileX = 14;
+    private const int DemoCornTileX = 15;
     private const int DemoPlotTileY = 10;
     private const int DemoPlayerTileX = 14;
     private const int DemoPlayerTileY = 11;
@@ -118,7 +119,9 @@ public class Game
     private static void SetupDemoPlot(TileMap map, CropField crops, AssetLibrary assets)
     {
         map.TryHoe(DemoPlotTileX, DemoPlotTileY);
+        map.TryHoe(DemoCornTileX, DemoPlotTileY);
         crops.TryPlant(DemoPlotTileX, DemoPlotTileY, CropType.Tomato, map, assets);
+        crops.TryPlant(DemoCornTileX, DemoPlotTileY, CropType.Corn, map, assets);
     }
 
     private static Vector2 TileCenterWorld(int tileX, int tileY, TileMap map, float scale) =>

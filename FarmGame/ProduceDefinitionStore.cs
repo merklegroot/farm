@@ -81,6 +81,19 @@ public static class ProduceDefinitionStore
         return names;
     }
 
+    public static IReadOnlyList<string> GetFrames(string name)
+    {
+        try
+        {
+            ProduceDefinition definition = Load(name);
+            return definition.Frames.Length > 0 ? definition.Frames : [];
+        }
+        catch (FileNotFoundException)
+        {
+            return [];
+        }
+    }
+
     public static void Delete(string name)
     {
         try

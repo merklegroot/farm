@@ -5,6 +5,7 @@ public enum CropType
     Carrot,
     Wheat,
     Tomato,
+    Corn,
 }
 
 public static class CropTypeInfo
@@ -14,6 +15,7 @@ public static class CropTypeInfo
         PlayerTool.CarrotSeeds => CropType.Carrot,
         PlayerTool.WheatSeeds => CropType.Wheat,
         PlayerTool.TomatoSeeds => CropType.Tomato,
+        PlayerTool.CornSeeds => CropType.Corn,
         _ => null,
     };
 
@@ -22,6 +24,7 @@ public static class CropTypeInfo
         CropType.Carrot => "Carrot",
         CropType.Wheat => "Wheat",
         CropType.Tomato => "Tomato",
+        CropType.Corn => "Corn",
         _ => type.ToString(),
     };
 
@@ -40,6 +43,12 @@ public static class CropTypeInfo
     public static IReadOnlyList<string> GrowthStageAssetNames(CropType type)
     {
         string name = DisplayName(type);
+        IReadOnlyList<string> fromProduce = ProduceDefinitionStore.GetFrames(name);
+        if (fromProduce.Count > 0)
+        {
+            return fromProduce;
+        }
+
         IReadOnlyList<string> fromFile = CropDefinitionStore.GetStages(name);
         if (fromFile.Count > 0)
         {

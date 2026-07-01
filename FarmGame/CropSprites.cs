@@ -12,6 +12,7 @@ public static class CropSprites
         CropType.Carrot => CellRect(3, 0),
         CropType.Wheat => CellRect(5, 0),
         CropType.Tomato => CellRect(4, 0),
+        CropType.Corn => CellRect(6, 0),
         _ => CellRect(3, 0),
     };
 
