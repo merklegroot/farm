@@ -28,6 +28,8 @@ public sealed class AssetEditorUi
     private const int PanelPadding = 16;
     private const int AssetRowHeight = 22;
     private const int MaxUndoSteps = 50;
+    private const float ColorDarkenFactor = 0.85f;
+    private const float ColorLightenFactor = 1.15f;
 
     private sealed class CanvasSnapshot
     {
@@ -105,6 +107,8 @@ public sealed class AssetEditorUi
     private Rectangle _undoButtonRect;
     private Rectangle _paletteRect;
     private Rectangle _customSwatchRect;
+    private Rectangle _darkenColorButtonRect;
+    private Rectangle _lightenColorButtonRect;
     private Rectangle _colorPickerRect;
     private Rectangle _clearButtonRect;
     private Rectangle _placeButtonRect;
@@ -206,6 +210,7 @@ public sealed class AssetEditorUi
         if (!_isPlacing)
         {
             HandlePaletteInput();
+            HandleColorAdjustButtons();
             HandleColorPickerInput();
             if (_tool == EditorTool.Eyedropper)
             {
@@ -323,6 +328,9 @@ public sealed class AssetEditorUi
         DrawPalette(x, y);
         y += 28;
 
+        DrawColorAdjustButtons();
+        y += 26;
+
         _colorPicker.Draw(x, y);
         y += _colorPicker.Height + 8;
 
@@ -374,7 +382,7 @@ public sealed class AssetEditorUi
     private void LayoutPanel(int screenWidth, int screenHeight)
     {
         int canvasBlock = _height * CellSize;
-        int colorPickerBlock = _colorPicker.Height + 8;
+        int colorPickerBlock = _colorPicker.Height + 8 + 26;
         int assetEditorHeight = 18 + 34 + 24 + 8 + 22 + canvasBlock + 12 + 32 + 28 + colorPickerBlock + 36;
         int produceEditorHeight = _produceEditor.ContentHeight + 36;
         int editorContentHeight = Math.Max(assetEditorHeight, produceEditorHeight);
@@ -415,7 +423,11 @@ public sealed class AssetEditorUi
             swatch,
             swatch);
 
-        float colorPickerY = paletteY + 28;
+        float adjustY = paletteY + 28;
+        _darkenColorButtonRect = new Rectangle(_editorColumnX, adjustY, 68, 22);
+        _lightenColorButtonRect = new Rectangle(_editorColumnX + 74, adjustY, 68, 22);
+
+        float colorPickerY = adjustY + 26;
         _colorPickerRect = new Rectangle(_editorColumnX, colorPickerY, _editorColumnWidth, _colorPicker.Height);
 
         float actionY = colorPickerY + _colorPicker.Height + 8;
@@ -632,6 +644,53 @@ public sealed class AssetEditorUi
         Raylib.DrawRectangleRec(_customSwatchRect, _colorPicker.Color);
         Raylib.DrawRectangleLinesEx(_customSwatchRect, _useCustomColor ? 2f : 1f,
             _useCustomColor ? new Color(240, 200, 80, 255) : new Color(70, 75, 90, 255));
+    }
+
+    private void DrawColorAdjustButtons()
+    {
+        DrawButton(_darkenColorButtonRect, "Darken", false);
+        DrawButton(_lightenColorButtonRect, "Lighten", false);
+    }
+
+    private void HandleColorAdjustButtons()
+    {
+        if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
+        {
+            return;
+        }
+
+        Vector2 mouse = Raylib.GetMousePosition();
+        if (Raylib.CheckCollisionPointRec(mouse, _darkenColorButtonRect))
+        {
+            ApplyPickedColor(AdjustBrightness(GetCurrentPaintColor(), ColorDarkenFactor));
+            return;
+        }
+
+        if (Raylib.CheckCollisionPointRec(mouse, _lightenColorButtonRect))
+        {
+            ApplyPickedColor(AdjustBrightness(GetCurrentPaintColor(), ColorLightenFactor));
+        }
+    }
+
+    private Color GetCurrentPaintColor()
+    {
+        if (_useEraser || _useCustomColor)
+        {
+            return _colorPicker.Color;
+        }
+
+        return Palette[_selectedColorIndex];
+    }
+
+    private static Color AdjustBrightness(Color color, float factor)
+    {
+        if (color.A == 0)
+        {
+            return color;
+        }
+
+        byte Scale(byte channel) => (byte)Math.Clamp((int)(channel * factor), 0, 255);
+        return new Color(Scale(color.R), Scale(color.G), Scale(color.B), color.A);
     }
 
     private void DrawActionButtons(int x, int y)
