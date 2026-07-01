@@ -32,6 +32,7 @@ public sealed class ProduceEditorUi
     private Rectangle _panelRect;
     private Rectangle _produceListRect;
     private Rectangle _newProduceButtonRect;
+    private Rectangle _cloneProduceButtonRect;
     private Rectangle _deleteProduceButtonRect;
     private Rectangle _produceNameFieldRect;
     private Rectangle _frameListRect;
@@ -82,8 +83,9 @@ public sealed class ProduceEditorUi
         _editorColumnWidth = editorColumnWidth;
         _produceListVisibleRows = produceListVisibleRows;
 
-        _newProduceButtonRect = new Rectangle(_leftColumnX, contentY + 18, 78, 22);
-        _deleteProduceButtonRect = new Rectangle(_leftColumnX + 84, contentY + 18, 78, 22);
+        _newProduceButtonRect = new Rectangle(_leftColumnX, contentY + 18, 52, 22);
+        _cloneProduceButtonRect = new Rectangle(_leftColumnX + 56, contentY + 18, 52, 22);
+        _deleteProduceButtonRect = new Rectangle(_leftColumnX + 112, contentY + 18, 52, 22);
 
         float listY = contentY + 48;
         float listHeight = _panelRect.Y + _panelRect.Height - 16 - 24 - listY;
@@ -127,6 +129,7 @@ public sealed class ProduceEditorUi
         int x = (int)_leftColumnX;
         UiText.DrawText("Produce", x, (int)contentY, 14, new Color(150, 155, 170, 255));
         DrawButton(_newProduceButtonRect, "New", false);
+        DrawButton(_cloneProduceButtonRect, "Clone", false);
         DrawButton(_deleteProduceButtonRect, "Delete", false);
 
         Raylib.DrawRectangleRec(_produceListRect, new Color(12, 13, 18, 255));
@@ -332,6 +335,12 @@ public sealed class ProduceEditorUi
             return;
         }
 
+        if (Raylib.CheckCollisionPointRec(mouse, _cloneProduceButtonRect))
+        {
+            CloneCurrentProduce();
+            return;
+        }
+
         if (Raylib.CheckCollisionPointRec(mouse, _deleteProduceButtonRect))
         {
             DeleteCurrentProduce();
@@ -401,6 +410,40 @@ public sealed class ProduceEditorUi
         catch (FileNotFoundException)
         {
             return fileStem;
+        }
+    }
+
+    private void CloneCurrentProduce()
+    {
+        TryPersistCurrent(out _);
+
+        string sourceName = _nameField.Text.Trim();
+        if (sourceName.Length == 0)
+        {
+            sourceName = _savedFileKey ?? "";
+        }
+
+        if (ProduceDefinitionStore.ToFileName(sourceName).Length == 0)
+        {
+            SetStatus("Enter a name to clone");
+            return;
+        }
+
+        try
+        {
+            string cloneName = ProduceDefinitionStore.SuggestCloneName(sourceName);
+            string fileKey = ProduceDefinitionStore.Save(new ProduceDefinition
+            {
+                Name = cloneName,
+                Frames = _frames.ToArray(),
+            });
+            RefreshLists();
+            SelectProduce(fileKey, persistPending: false);
+            SetStatus($"Cloned to '{cloneName}'");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(ex.Message);
         }
     }
 

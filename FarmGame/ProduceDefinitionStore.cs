@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace FarmGame;
 
@@ -113,6 +114,24 @@ public static class ProduceDefinitionStore
         return $"produce_{Guid.NewGuid():N}"[..16];
     }
 
+    public static string SuggestCloneName(string sourceName)
+    {
+        EnsureDirectoryExists();
+        var existingFiles = new HashSet<string>(ListNames(), StringComparer.OrdinalIgnoreCase);
+        string root = GetCloneRootName(sourceName);
+
+        for (int i = 2; i < 1000; i++)
+        {
+            string candidate = $"{root}_{i}";
+            if (!existingFiles.Contains(ToFileName(candidate)))
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException("Could not find an available clone name.");
+    }
+
     public static string ToFileName(string name) =>
         DefinedAssetStore.SanitizeFileName(name.Trim());
 
@@ -157,6 +176,24 @@ public static class ProduceDefinitionStore
         {
             yield return sanitized;
         }
+    }
+
+    private static string GetCloneRootName(string sourceName)
+    {
+        string trimmed = sourceName.Trim();
+        Match parenNumbered = Regex.Match(trimmed, @"^(.+?)\s+\((\d+)\)$");
+        if (parenNumbered.Success)
+        {
+            return parenNumbered.Groups[1].Value.Trim();
+        }
+
+        Match underscoreNumbered = Regex.Match(trimmed, @"^(.+?)_(\d+)$");
+        if (underscoreNumbered.Success)
+        {
+            return underscoreNumbered.Groups[1].Value.Trim();
+        }
+
+        return trimmed;
     }
 
     private sealed class ProduceDefinitionFile
