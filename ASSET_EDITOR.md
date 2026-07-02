@@ -35,7 +35,7 @@ Click an asset in the list to select it. The list shows each asset's **display i
 | Tool | Usage |
 |------|--------|
 | **Brush** | Paint with the active color. Shortcut: **B** |
-| **Select** | Drag to select a rectangle; drag the selection to move it. Shortcut: **S** |
+| **Select** | Drag to select a rectangle; drag the selection to move it. Returns to **Brush** and clears the selection after the move. Shortcut: **S** |
 | **Pick** | Click a pixel to sample its color, then return to Brush automatically. Shortcut: **I** |
 | **Undo** | Revert the last change (up to 50 steps). Shortcut: **Ctrl+Z** / **Cmd+Z** |
 | **Redo** | Reapply the last undone change. Shortcut: **Ctrl+Y** / **Cmd+Shift+Z** |

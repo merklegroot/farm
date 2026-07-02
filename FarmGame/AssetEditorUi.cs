@@ -1360,13 +1360,12 @@ public sealed class AssetEditorUi
         }
 
         PasteRegion(_moveX, _moveY, _selW, _selH, _liftedPixels);
-        _selX = _moveX;
-        _selY = _moveY;
         _liftedPixels = null;
         _isMovingSelection = false;
-        _hasSelection = _selW > 0 && _selH > 0;
         _pixelsDirty = true;
         PersistCurrent(assets);
+        _tool = EditorTool.Brush;
+        CancelSelection(restoreLifted: false);
     }
 
     private void FinishSelection()
