@@ -28,6 +28,9 @@ public sealed class AssetEditorUi
     private const int PanelPadding = 16;
     private const int AssetRowHeight = 22;
     private const int MaxUndoSteps = 50;
+    private const int MaxRecentColors = 6;
+    private const int RecentSwatchSize = 18;
+    private const int RecentSwatchGap = 3;
     private const float ColorDarkenFactor = 0.85f;
     private const float ColorLightenFactor = 1.15f;
 
@@ -54,6 +57,8 @@ public sealed class AssetEditorUi
     private readonly ColorPickerUi _colorPicker = new();
     private readonly ProduceEditorUi _produceEditor = new();
     private readonly List<CanvasSnapshot> _undoStack = [];
+    private readonly List<CanvasSnapshot> _redoStack = [];
+    private readonly List<Color> _recentColors = [];
     private Color[] _pixels = new Color[16 * 16];
     private int _width = 16;
     private int _height = 16;
@@ -105,6 +110,8 @@ public sealed class AssetEditorUi
     private Rectangle _selectToolRect;
     private Rectangle _eyedropperToolRect;
     private Rectangle _undoButtonRect;
+    private Rectangle _redoButtonRect;
+    private Rectangle _recentColorsRect;
     private Rectangle _paletteRect;
     private Rectangle _customSwatchRect;
     private Rectangle _darkenColorButtonRect;
@@ -115,7 +122,7 @@ public sealed class AssetEditorUi
     private Rectangle _closeButtonRect;
     private Rectangle _assetsTabRect;
     private Rectangle _produceTabRect;
-    private IReadOnlyList<string> _savedNames = [];
+    private IReadOnlyList<AssetListEntry> _assetEntries = [];
 
     public AssetEditorUi()
     {
@@ -142,15 +149,15 @@ public sealed class AssetEditorUi
         RefreshAssetList();
         _produceEditor.OnOpen();
 
-        if (_selectedFileKey != null && _savedNames.Contains(_selectedFileKey, StringComparer.OrdinalIgnoreCase))
+        if (_selectedFileKey != null && _assetEntries.Any(e => string.Equals(e.FileStem, _selectedFileKey, StringComparison.OrdinalIgnoreCase)))
         {
             SelectAsset(_selectedFileKey, assets, persistPending: false);
             return;
         }
 
-        if (_savedNames.Count > 0)
+        if (_assetEntries.Count > 0)
         {
-            SelectAsset(_savedNames[0], assets, persistPending: false);
+            SelectAsset(_assetEntries[0].FileStem, assets, persistPending: false);
         }
         else
         {
@@ -205,11 +212,17 @@ public sealed class AssetEditorUi
         HandleAssetList(assets);
         HandleAssetListScroll();
         HandleToolButtons(assets);
-        HandleUndoShortcut(assets);
+        HandleEditShortcuts(assets);
+
+        if (!_isPlacing && !_nameFocused)
+        {
+            HandleToolKeyboardShortcuts();
+        }
 
         if (!_isPlacing)
         {
             HandlePaletteInput();
+            HandleRecentColorsInput();
             HandleColorAdjustButtons();
             HandleColorPickerInput();
             if (_tool == EditorTool.Eyedropper)
@@ -315,7 +328,7 @@ public sealed class AssetEditorUi
         string mode = _isPlacing ? "Click the map to place"
             : _tool == EditorTool.Select ? "Drag to select, then drag selection to move"
             : _tool == EditorTool.Eyedropper ? "Click a pixel to pick its color"
-            : "Ctrl+Z undo · changes save automatically";
+            : "B brush · S select · I pick · Ctrl+Z/Y undo/redo";
         UiText.DrawText(mode, x, y, 15, new Color(180, 185, 195, 255));
         y += 22;
 
@@ -329,6 +342,9 @@ public sealed class AssetEditorUi
         y += 28;
 
         DrawColorAdjustButtons();
+        y += 26;
+
+        DrawRecentColors(x, y);
         y += 26;
 
         _colorPicker.Draw(x, y);
@@ -382,7 +398,7 @@ public sealed class AssetEditorUi
     private void LayoutPanel(int screenWidth, int screenHeight)
     {
         int canvasBlock = _height * CellSize;
-        int colorPickerBlock = _colorPicker.Height + 8 + 26;
+        int colorPickerBlock = _colorPicker.Height + 8 + 26 + 26;
         int assetEditorHeight = 18 + 34 + 24 + 8 + 22 + canvasBlock + 12 + 32 + 28 + colorPickerBlock + 36;
         int produceEditorHeight = _produceEditor.ContentHeight + 36;
         int editorContentHeight = Math.Max(assetEditorHeight, produceEditorHeight);
@@ -411,6 +427,7 @@ public sealed class AssetEditorUi
         _selectToolRect = new Rectangle(_editorColumnX + 58, toolsY, 52, 24);
         _eyedropperToolRect = new Rectangle(_editorColumnX + 116, toolsY, 52, 24);
         _undoButtonRect = new Rectangle(_editorColumnX + 174, toolsY, 52, 24);
+        _redoButtonRect = new Rectangle(_editorColumnX + 232, toolsY, 52, 24);
 
         const int swatch = 24;
         const int gap = 4;
@@ -427,7 +444,10 @@ public sealed class AssetEditorUi
         _darkenColorButtonRect = new Rectangle(_editorColumnX, adjustY, 68, 22);
         _lightenColorButtonRect = new Rectangle(_editorColumnX + 74, adjustY, 68, 22);
 
-        float colorPickerY = adjustY + 26;
+        float recentY = adjustY + 26;
+        _recentColorsRect = new Rectangle(_editorColumnX, recentY, _editorColumnWidth, RecentSwatchSize);
+
+        float colorPickerY = recentY + 26;
         _colorPickerRect = new Rectangle(_editorColumnX, colorPickerY, _editorColumnWidth, _colorPicker.Height);
 
         float actionY = colorPickerY + _colorPicker.Height + 8;
@@ -620,6 +640,34 @@ public sealed class AssetEditorUi
         DrawButton(_selectToolRect, "Select", _tool == EditorTool.Select);
         DrawButton(_eyedropperToolRect, "Pick", _tool == EditorTool.Eyedropper);
         DrawButton(_undoButtonRect, "Undo", false);
+        DrawButton(_redoButtonRect, "Redo", false);
+    }
+
+    private void DrawRecentColors(int x, int y)
+    {
+        UiText.DrawText("Recent", x, y - 14, 12, new Color(130, 135, 150, 255));
+
+        for (int i = 0; i < MaxRecentColors; i++)
+        {
+            var rect = new Rectangle(
+                x + i * (RecentSwatchSize + RecentSwatchGap),
+                y,
+                RecentSwatchSize,
+                RecentSwatchSize);
+
+            if (i >= _recentColors.Count)
+            {
+                Raylib.DrawRectangleRec(rect, new Color(28, 30, 36, 255));
+                Raylib.DrawRectangleLinesEx(rect, 1f, new Color(50, 55, 65, 255));
+                continue;
+            }
+
+            Color color = _recentColors[i];
+            Raylib.DrawRectangleRec(rect, color);
+            bool active = !_useEraser && _useCustomColor && _colorPicker.Color.Equals(color);
+            Raylib.DrawRectangleLinesEx(rect, active ? 2f : 1f,
+                active ? new Color(240, 200, 80, 255) : new Color(70, 75, 90, 255));
+        }
     }
 
     private void DrawPalette(int x, int y)
@@ -712,25 +760,25 @@ public sealed class AssetEditorUi
         Raylib.DrawRectangleRec(_assetListRect, new Color(12, 13, 18, 255));
         Raylib.DrawRectangleLinesEx(_assetListRect, 1f, new Color(70, 75, 90, 255));
 
-        if (_savedNames.Count == 0)
+        if (_assetEntries.Count == 0)
         {
             UiText.DrawText("(none yet)", (int)_assetListRect.X + 8, (int)_assetListRect.Y + 6, 14, new Color(110, 115, 130, 255));
             return;
         }
 
-        int maxScroll = Math.Max(0, _savedNames.Count - _assetListVisibleRows);
+        int maxScroll = Math.Max(0, _assetEntries.Count - _assetListVisibleRows);
         _assetListScroll = Math.Clamp(_assetListScroll, 0, maxScroll);
 
         for (int row = 0; row < _assetListVisibleRows; row++)
         {
             int index = _assetListScroll + row;
-            if (index >= _savedNames.Count)
+            if (index >= _assetEntries.Count)
             {
                 break;
             }
 
-            string name = _savedNames[index];
-            bool selected = string.Equals(name, _selectedFileKey, StringComparison.OrdinalIgnoreCase);
+            AssetListEntry entry = _assetEntries[index];
+            bool selected = string.Equals(entry.FileStem, _selectedFileKey, StringComparison.OrdinalIgnoreCase);
             var rowRect = new Rectangle(_assetListRect.X, _assetListRect.Y + row * AssetRowHeight, _assetListRect.Width, AssetRowHeight);
             Raylib.DrawRectangleRec(rowRect, selected ? new Color(58, 62, 78, 255) : new Color(32, 35, 42, 255));
             if (selected)
@@ -738,7 +786,7 @@ public sealed class AssetEditorUi
                 Raylib.DrawRectangleLinesEx(rowRect, 1f, new Color(240, 200, 80, 255));
             }
 
-            UiText.DrawText(name, (int)rowRect.X + 8, (int)rowRect.Y + 3, 14, selected ? Color.WHITE : Color.LIGHTGRAY);
+            UiText.DrawText(entry.DisplayId, (int)rowRect.X + 8, (int)rowRect.Y + 3, 14, selected ? Color.WHITE : Color.LIGHTGRAY);
         }
     }
 
@@ -917,9 +965,9 @@ public sealed class AssetEditorUi
             RefreshAssetList();
             CancelSelection(restoreLifted: true);
 
-            if (_savedNames.Count > 0)
+            if (_assetEntries.Count > 0)
             {
-                SelectAsset(_savedNames[0], assets, persistPending: false);
+                SelectAsset(_assetEntries[0].FileStem, assets, persistPending: false);
             }
             else
             {
@@ -990,17 +1038,17 @@ public sealed class AssetEditorUi
         }
 
         int index = _assetListScroll + row;
-        if (index < 0 || index >= _savedNames.Count)
+        if (index < 0 || index >= _assetEntries.Count)
         {
             return;
         }
 
-        SelectAsset(_savedNames[index], assets, persistPending: true);
+        SelectAsset(_assetEntries[index].FileStem, assets, persistPending: true);
     }
 
     private void HandleAssetListScroll()
     {
-        if (_savedNames.Count <= _assetListVisibleRows)
+        if (_assetEntries.Count <= _assetListVisibleRows)
         {
             return;
         }
@@ -1018,7 +1066,7 @@ public sealed class AssetEditorUi
         }
 
         _assetListScroll -= (int)wheel;
-        _assetListScroll = Math.Clamp(_assetListScroll, 0, _savedNames.Count - _assetListVisibleRows);
+        _assetListScroll = Math.Clamp(_assetListScroll, 0, _assetEntries.Count - _assetListVisibleRows);
     }
 
     private void HandlePaletteInput()
@@ -1052,6 +1100,7 @@ public sealed class AssetEditorUi
                 _useEraser = false;
                 _useCustomColor = false;
                 _colorPicker.SetColor(Palette[i]);
+                RecordRecentColor(Palette[i]);
                 return;
             }
         }
@@ -1073,6 +1122,30 @@ public sealed class AssetEditorUi
             _useEraser = false;
             _useCustomColor = true;
         }
+    }
+
+    private void HandleRecentColorsInput()
+    {
+        if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
+        {
+            return;
+        }
+
+        Vector2 mouse = Raylib.GetMousePosition();
+        if (!Raylib.CheckCollisionPointRec(mouse, _recentColorsRect))
+        {
+            return;
+        }
+
+        int index = (int)((mouse.X - _recentColorsRect.X) / (RecentSwatchSize + RecentSwatchGap));
+        if (index < 0 || index >= _recentColors.Count)
+        {
+            return;
+        }
+
+        _tool = EditorTool.Brush;
+        CancelSelection(restoreLifted: true);
+        ApplyPickedColor(_recentColors[index], recordRecent: false);
     }
 
     private void HandleColorPickerInput()
@@ -1122,10 +1195,16 @@ public sealed class AssetEditorUi
         if (Raylib.CheckCollisionPointRec(mouse, _undoButtonRect))
         {
             Undo(assets);
+            return;
+        }
+
+        if (Raylib.CheckCollisionPointRec(mouse, _redoButtonRect))
+        {
+            Redo(assets);
         }
     }
 
-    private void HandleUndoShortcut(AssetLibrary assets)
+    private void HandleEditShortcuts(AssetLibrary assets)
     {
         if (_nameFocused)
         {
@@ -1137,9 +1216,53 @@ public sealed class AssetEditorUi
                         Raylib.IsKeyDown(KeyboardKey.KEY_LEFT_SUPER) ||
                         Raylib.IsKeyDown(KeyboardKey.KEY_RIGHT_SUPER);
 
-        if (modifier && Raylib.IsKeyPressed(KeyboardKey.KEY_Z))
+        if (!modifier)
         {
-            Undo(assets);
+            return;
+        }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.KEY_Z))
+        {
+            bool shift = Raylib.IsKeyDown(KeyboardKey.KEY_LEFT_SHIFT) ||
+                         Raylib.IsKeyDown(KeyboardKey.KEY_RIGHT_SHIFT);
+            if (shift)
+            {
+                Redo(assets);
+            }
+            else
+            {
+                Undo(assets);
+            }
+        }
+        else if (Raylib.IsKeyPressed(KeyboardKey.KEY_Y))
+        {
+            Redo(assets);
+        }
+    }
+
+    private void HandleToolKeyboardShortcuts()
+    {
+        if (Raylib.IsKeyDown(KeyboardKey.KEY_LEFT_CONTROL) ||
+            Raylib.IsKeyDown(KeyboardKey.KEY_RIGHT_CONTROL) ||
+            Raylib.IsKeyDown(KeyboardKey.KEY_LEFT_SUPER) ||
+            Raylib.IsKeyDown(KeyboardKey.KEY_RIGHT_SUPER))
+        {
+            return;
+        }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.KEY_B))
+        {
+            _tool = EditorTool.Brush;
+            CancelSelection(restoreLifted: true);
+        }
+        else if (Raylib.IsKeyPressed(KeyboardKey.KEY_S))
+        {
+            _tool = EditorTool.Select;
+        }
+        else if (Raylib.IsKeyPressed(KeyboardKey.KEY_I))
+        {
+            _tool = EditorTool.Eyedropper;
+            CancelSelection(restoreLifted: true);
         }
     }
 
@@ -1370,7 +1493,7 @@ public sealed class AssetEditorUi
         _tool = EditorTool.Brush;
     }
 
-    private void ApplyPickedColor(Color color)
+    private void ApplyPickedColor(Color color, bool recordRecent = true)
     {
         if (color.A == 0)
         {
@@ -1387,6 +1510,11 @@ public sealed class AssetEditorUi
                 _useEraser = false;
                 _useCustomColor = false;
                 _colorPicker.SetColor(color);
+                if (recordRecent)
+                {
+                    RecordRecentColor(color);
+                }
+
                 return;
             }
         }
@@ -1394,6 +1522,25 @@ public sealed class AssetEditorUi
         _colorPicker.SetColor(color);
         _useEraser = false;
         _useCustomColor = true;
+        if (recordRecent)
+        {
+            RecordRecentColor(color);
+        }
+    }
+
+    private void RecordRecentColor(Color color)
+    {
+        if (color.A == 0)
+        {
+            return;
+        }
+
+        _recentColors.RemoveAll(c => c.Equals(color));
+        _recentColors.Insert(0, color);
+        while (_recentColors.Count > MaxRecentColors)
+        {
+            _recentColors.RemoveAt(_recentColors.Count - 1);
+        }
     }
 
     private void HandleCanvasPaint(AssetLibrary assets)
@@ -1446,6 +1593,8 @@ public sealed class AssetEditorUi
         {
             _undoStack.RemoveAt(0);
         }
+
+        _redoStack.Clear();
     }
 
     private CanvasSnapshot CaptureSnapshot()
@@ -1482,6 +1631,7 @@ public sealed class AssetEditorUi
             CancelSelection(restoreLifted: true);
         }
 
+        _redoStack.Add(CaptureSnapshot());
         RestoreSnapshot(_undoStack[^1]);
         _undoStack.RemoveAt(_undoStack.Count - 1);
         _pixelsDirty = true;
@@ -1489,8 +1639,32 @@ public sealed class AssetEditorUi
         SetStatus("Undone");
     }
 
-    private void ClearUndoHistory() =>
+    private void Redo(AssetLibrary assets)
+    {
+        if (_redoStack.Count == 0)
+        {
+            SetStatus("Nothing to redo");
+            return;
+        }
+
+        if (_isMovingSelection)
+        {
+            CancelSelection(restoreLifted: true);
+        }
+
+        _undoStack.Add(CaptureSnapshot());
+        RestoreSnapshot(_redoStack[^1]);
+        _redoStack.RemoveAt(_redoStack.Count - 1);
+        _pixelsDirty = true;
+        PersistCurrent(assets);
+        SetStatus("Redone");
+    }
+
+    private void ClearUndoHistory()
+    {
         _undoStack.Clear();
+        _redoStack.Clear();
+    }
 
     private void CommitNameChange(AssetLibrary assets)
     {
@@ -1565,9 +1739,9 @@ public sealed class AssetEditorUi
         }
 
         int index = -1;
-        for (int i = 0; i < _savedNames.Count; i++)
+        for (int i = 0; i < _assetEntries.Count; i++)
         {
-            if (string.Equals(_savedNames[i], _selectedFileKey, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(_assetEntries[i].FileStem, _selectedFileKey, StringComparison.OrdinalIgnoreCase))
             {
                 index = i;
                 break;
@@ -1635,7 +1809,7 @@ public sealed class AssetEditorUi
     }
 
     private void RefreshAssetList() =>
-        _savedNames = DefinedAssetStore.ListAssetNames();
+        _assetEntries = DefinedAssetStore.ListAssets();
 
     private PixelAssetDefinition BuildDefinition() =>
         PixelAssetDefinition.FromPixels(_width, _height, _pixels);

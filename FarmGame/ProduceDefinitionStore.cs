@@ -10,6 +10,8 @@ public sealed class ProduceDefinition
     public required string[] Frames { get; init; }
 }
 
+public readonly record struct ProduceListEntry(string FileStem, string DisplayName);
+
 public static class ProduceDefinitionStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -79,6 +81,37 @@ public static class ProduceDefinitionStore
 
         names.Sort(StringComparer.OrdinalIgnoreCase);
         return names;
+    }
+
+    public static IReadOnlyList<ProduceListEntry> ListEntries()
+    {
+        EnsureDirectoryExists();
+        var entries = new List<ProduceListEntry>();
+        foreach (string path in Directory.EnumerateFiles(ProduceDirectory, "*.json"))
+        {
+            ProduceDefinition? definition = TryLoadDefinition(path);
+            if (definition != null)
+            {
+                entries.Add(new ProduceListEntry(Path.GetFileNameWithoutExtension(path)!, definition.Name));
+            }
+        }
+
+        entries.Sort((a, b) => string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase));
+        return entries;
+    }
+
+    public static IReadOnlyList<string> FindMissingFrameAssets(IEnumerable<string> frames)
+    {
+        var missing = new List<string>();
+        foreach (string frame in frames)
+        {
+            if (!DefinedAssetStore.TryResolveAsset(frame, out _))
+            {
+                missing.Add(frame);
+            }
+        }
+
+        return missing;
     }
 
     public static IReadOnlyList<string> GetFrames(string name)

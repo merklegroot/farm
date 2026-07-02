@@ -15,7 +15,7 @@ public sealed class ProduceEditorUi
     private readonly List<Rectangle> _frameDownRects = [];
     private readonly List<Rectangle> _frameRemoveRects = [];
 
-    private IReadOnlyList<string> _produceNames = [];
+    private IReadOnlyList<ProduceListEntry> _produceEntries = [];
     private IReadOnlyList<string> _assetNames = [];
     private string? _savedFileKey;
     private string? _selectedFileKey;
@@ -50,15 +50,15 @@ public sealed class ProduceEditorUi
     public void OnOpen()
     {
         RefreshLists();
-        if (_selectedFileKey != null && _produceNames.Contains(_selectedFileKey, StringComparer.OrdinalIgnoreCase))
+        if (_selectedFileKey != null && _produceEntries.Any(e => string.Equals(e.FileStem, _selectedFileKey, StringComparison.OrdinalIgnoreCase)))
         {
             SelectProduce(_selectedFileKey, persistPending: false);
             return;
         }
 
-        if (_produceNames.Count > 0)
+        if (_produceEntries.Count > 0)
         {
-            SelectProduce(_produceNames[0], persistPending: false);
+            SelectProduce(_produceEntries[0].FileStem, persistPending: false);
         }
         else
         {
@@ -135,25 +135,25 @@ public sealed class ProduceEditorUi
         Raylib.DrawRectangleRec(_produceListRect, new Color(12, 13, 18, 255));
         Raylib.DrawRectangleLinesEx(_produceListRect, 1f, new Color(70, 75, 90, 255));
 
-        if (_produceNames.Count == 0)
+        if (_produceEntries.Count == 0)
         {
             UiText.DrawText("(none yet)", (int)_produceListRect.X + 8, (int)_produceListRect.Y + 6, 14, new Color(110, 115, 130, 255));
             return;
         }
 
-        int maxScroll = Math.Max(0, _produceNames.Count - _produceListVisibleRows);
+        int maxScroll = Math.Max(0, _produceEntries.Count - _produceListVisibleRows);
         _produceListScroll = Math.Clamp(_produceListScroll, 0, maxScroll);
 
         for (int row = 0; row < _produceListVisibleRows; row++)
         {
             int index = _produceListScroll + row;
-            if (index >= _produceNames.Count)
+            if (index >= _produceEntries.Count)
             {
                 break;
             }
 
-            string name = _produceNames[index];
-            bool selected = string.Equals(name, _selectedFileKey, StringComparison.OrdinalIgnoreCase);
+            ProduceListEntry entry = _produceEntries[index];
+            bool selected = string.Equals(entry.FileStem, _selectedFileKey, StringComparison.OrdinalIgnoreCase);
             var rowRect = new Rectangle(_produceListRect.X, _produceListRect.Y + row * RowHeight, _produceListRect.Width, RowHeight);
             Raylib.DrawRectangleRec(rowRect, selected ? new Color(58, 62, 78, 255) : new Color(32, 35, 42, 255));
             if (selected)
@@ -161,7 +161,7 @@ public sealed class ProduceEditorUi
                 Raylib.DrawRectangleLinesEx(rowRect, 1f, new Color(240, 200, 80, 255));
             }
 
-            UiText.DrawText(name, (int)rowRect.X + 8, (int)rowRect.Y + 3, 14, selected ? Color.WHITE : Color.LIGHTGRAY);
+            UiText.DrawText(entry.DisplayName, (int)rowRect.X + 8, (int)rowRect.Y + 3, 14, selected ? Color.WHITE : Color.LIGHTGRAY);
         }
     }
 
@@ -181,7 +181,7 @@ public sealed class ProduceEditorUi
 
     public void HandleProduceListScroll(Vector2 mouse)
     {
-        if (_produceNames.Count <= _produceListVisibleRows || !Raylib.CheckCollisionPointRec(mouse, _produceListRect))
+        if (_produceEntries.Count <= _produceListVisibleRows || !Raylib.CheckCollisionPointRec(mouse, _produceListRect))
         {
             return;
         }
@@ -193,7 +193,7 @@ public sealed class ProduceEditorUi
         }
 
         _produceListScroll -= (int)wheel;
-        _produceListScroll = Math.Clamp(_produceListScroll, 0, _produceNames.Count - _produceListVisibleRows);
+        _produceListScroll = Math.Clamp(_produceListScroll, 0, _produceEntries.Count - _produceListVisibleRows);
     }
 
     public void HandleFrameListScroll(Vector2 mouse)
@@ -260,7 +260,8 @@ public sealed class ProduceEditorUi
             var rowRect = new Rectangle(_frameListRect.X, rowY, _frameListRect.Width, RowHeight);
             Raylib.DrawRectangleRec(rowRect, new Color(32, 35, 42, 255));
 
-            UiText.DrawText($"{index + 1}. {_frames[index]}", (int)rowRect.X + 8, (int)rowY + 3, 14, Color.LIGHTGRAY);
+            UiText.DrawText($"{index + 1}. {_frames[index]}", (int)rowRect.X + 8, (int)rowY + 3, 14,
+                DefinedAssetStore.TryResolveAsset(_frames[index], out _) ? Color.LIGHTGRAY : new Color(220, 90, 90, 255));
 
             var removeRect = new Rectangle(rowRect.X + rowRect.Width - 22, rowY + 3, 18, 16);
             var downRect = new Rectangle(removeRect.X - 22, rowY + 3, 18, 16);
@@ -318,12 +319,12 @@ public sealed class ProduceEditorUi
         }
 
         int index = _produceListScroll + row;
-        if (index < 0 || index >= _produceNames.Count)
+        if (index < 0 || index >= _produceEntries.Count)
         {
             return;
         }
 
-        SelectProduce(_produceNames[index], persistPending: true);
+        SelectProduce(_produceEntries[index].FileStem, persistPending: true);
     }
 
     private void HandleProduceButtons(Vector2 mouse)
@@ -499,9 +500,9 @@ public sealed class ProduceEditorUi
             ProduceDefinitionStore.Delete(fileKey);
             RefreshLists();
 
-            if (_produceNames.Count > 0)
+            if (_produceEntries.Count > 0)
             {
-                SelectProduce(_produceNames[0], persistPending: false);
+                SelectProduce(_produceEntries[0].FileStem, persistPending: false);
             }
             else
             {
@@ -572,6 +573,12 @@ public sealed class ProduceEditorUi
             EnsureSelectedProduceVisible();
             _dirty = false;
             message = "";
+            IReadOnlyList<string> missing = ProduceDefinitionStore.FindMissingFrameAssets(_frames);
+            if (missing.Count > 0)
+            {
+                SetStatus($"Saved (missing assets: {string.Join(", ", missing)})");
+            }
+
             return true;
         }
         catch (Exception ex)
@@ -583,7 +590,7 @@ public sealed class ProduceEditorUi
 
     private void RefreshLists()
     {
-        _produceNames = ProduceDefinitionStore.ListNames();
+        _produceEntries = ProduceDefinitionStore.ListEntries();
         _assetNames = DefinedAssetStore.ListAssetNames();
     }
 
@@ -595,9 +602,9 @@ public sealed class ProduceEditorUi
         }
 
         int index = -1;
-        for (int i = 0; i < _produceNames.Count; i++)
+        for (int i = 0; i < _produceEntries.Count; i++)
         {
-            if (string.Equals(_produceNames[i], _selectedFileKey, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(_produceEntries[i].FileStem, _selectedFileKey, StringComparison.OrdinalIgnoreCase))
             {
                 index = i;
                 break;

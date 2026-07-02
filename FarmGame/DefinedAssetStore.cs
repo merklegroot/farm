@@ -27,6 +27,8 @@ public sealed class SavedPlacementEntry
     public required float Y { get; init; }
 }
 
+public readonly record struct AssetListEntry(string FileStem, string DisplayId);
+
 public static class DefinedAssetStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -96,6 +98,35 @@ public static class DefinedAssetStore
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .Select(name => name!)
             .ToList();
+    }
+
+    public static IReadOnlyList<AssetListEntry> ListAssets()
+    {
+        EnsureDirectoryExists();
+        var entries = new List<AssetListEntry>();
+        foreach (string fileStem in ListAssetNames())
+        {
+            string displayId = LoadDisplayName(fileStem);
+            entries.Add(new AssetListEntry(fileStem, displayId));
+        }
+
+        entries.Sort((a, b) => string.Compare(a.DisplayId, b.DisplayId, StringComparison.OrdinalIgnoreCase));
+        return entries;
+    }
+
+    public static bool TryResolveAsset(string reference, out string displayId)
+    {
+        try
+        {
+            SavedAsset asset = LoadAsset(reference);
+            displayId = asset.Name;
+            return true;
+        }
+        catch (FileNotFoundException)
+        {
+            displayId = "";
+            return false;
+        }
     }
 
     public static void SavePlacements(IEnumerable<SavedPlacementEntry> placements)

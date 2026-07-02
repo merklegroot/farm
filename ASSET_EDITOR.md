@@ -21,7 +21,7 @@ Create and edit pixel-art sprites used by crops, decorations, and the in-game as
 | **Clone** | Duplicate the selected asset (named `Original_2`, `Original_3`, …) |
 | **Delete** | Remove the asset and its world placements |
 
-Click an asset in the list to select it. Scroll the list with the mouse wheel.
+Click an asset in the list to select it. The list shows each asset's **display id** (which may differ from the filename). Scroll the list with the mouse wheel.
 
 ### Canvas (right column)
 
@@ -34,10 +34,11 @@ Click an asset in the list to select it. Scroll the list with the mouse wheel.
 
 | Tool | Usage |
 |------|--------|
-| **Brush** | Paint with the active color |
-| **Select** | Drag to select a rectangle; drag the selection to move it |
-| **Pick** | Click a pixel to sample its color, then return to Brush automatically |
+| **Brush** | Paint with the active color. Shortcut: **B** |
+| **Select** | Drag to select a rectangle; drag the selection to move it. Shortcut: **S** |
+| **Pick** | Click a pixel to sample its color, then return to Brush automatically. Shortcut: **I** |
 | **Undo** | Revert the last change (up to 50 steps). Shortcut: **Ctrl+Z** / **Cmd+Z** |
+| **Redo** | Reapply the last undone change. Shortcut: **Ctrl+Y** / **Cmd+Shift+Z** |
 
 ### Colors
 
@@ -45,6 +46,7 @@ Click an asset in the list to select it. Scroll the list with the mouse wheel.
 - **X** — eraser (transparent pixels).
 - **Custom swatch** — shows the current custom color; click to use it.
 - **Darken** / **Lighten** — adjust the current color (~15% darker or lighter).
+- **Recent** — up to six recently used colors; click to select.
 - **Color picker** — full HSV/RGB control below the palette:
   - Drag the saturation/value box and hue strip
   - Drag the R, G, B sliders
@@ -66,10 +68,12 @@ Define harvestable produce (animated frame sequences for crops like tomato and c
 | **Clone** | Duplicate the selected produce (`Tomato_2`, etc.) |
 | **Delete** | Remove the produce file |
 
+Click a produce in the list to select it. The list shows each produce's **display name** (which may differ from the filename). Scroll with the mouse wheel.
+
 ### Produce editor (right column)
 
 - **Name** — produce display name (e.g. `Tomato`).
-- **Frames** — ordered list of asset IDs that make up the animation. Use **↑** / **↓** to reorder and **×** to remove a frame.
+- **Frames** — ordered list of asset IDs that make up the animation. Use **↑** / **↓** to reorder and **×** to remove a frame. Missing or unresolved asset references are shown in **red**; saving still works, but the status bar warns which frames could not be found.
 - **Add frame** — click an asset in the picker below to append it to the frames list.
 
 Example produce file (`FarmGame/Assets/tomato.json`):
