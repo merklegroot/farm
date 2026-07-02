@@ -10,6 +10,7 @@ public sealed class InventoryUi
     private const int PanelPadding = 16;
     private const int SectionGap = 12;
     private const float DragThreshold = 4f;
+    private const float CancelDropRadiusFactor = 0.25f;
 
     private readonly Texture2D _playerTexture;
     private readonly Texture2D _actionsTexture;
@@ -87,7 +88,11 @@ public sealed class InventoryUi
         UiText.DrawText("Backpack", x, y, 14, new Color(150, 155, 170, 255));
         y += 20;
 
-        int? dropTarget = _isDragging ? GetSlotIndexAt(Raylib.GetMousePosition()) : null;
+        int? dropTarget = null;
+        if (_isDragging && _pressSlotIndex != null)
+        {
+            dropTarget = ResolveDropTarget(Raylib.GetMousePosition(), _pressSlotIndex.Value);
+        }
 
         int backpackY = y;
         for (int row = 0; row < BackpackRows; row++)
@@ -214,11 +219,97 @@ public sealed class InventoryUi
             Raylib.DrawRectangleLinesEx(slotRect, 2f, new Color(120, 170, 220, 255));
         }
 
-        if (dropTargetIndex == slotIndex && _pressSlotIndex != slotIndex)
+        if (dropTargetIndex == slotIndex)
         {
             Raylib.DrawRectangleLinesEx(slotRect, 2f, new Color(140, 220, 140, 255));
         }
+        else if (_isDragging && _pressSlotIndex == slotIndex && IsNearSourceCancelZone(Raylib.GetMousePosition(), slotIndex))
+        {
+            Raylib.DrawRectangleLinesEx(slotRect, 2f, new Color(220, 120, 120, 255));
+        }
     }
+
+    private bool IsNearSourceCancelZone(Vector2 mouse, int sourceIndex)
+    {
+        foreach ((int index, Rectangle rect) in EnumerateSlotRects())
+        {
+            if (index != sourceIndex)
+            {
+                continue;
+            }
+
+            float cancelRadius = ItemSlotUi.SlotSize * CancelDropRadiusFactor;
+            return Vector2.Distance(mouse, GetRectCenter(rect)) < cancelRadius;
+        }
+
+        return false;
+    }
+
+    private int? ResolveDropTarget(Vector2 mouse, int sourceIndex)
+    {
+        Rectangle? sourceRect = null;
+        foreach ((int index, Rectangle rect) in EnumerateSlotRects())
+        {
+            if (index == sourceIndex)
+            {
+                sourceRect = rect;
+                break;
+            }
+        }
+
+        if (sourceRect != null)
+        {
+            float cancelRadius = ItemSlotUi.SlotSize * CancelDropRadiusFactor;
+            if (Vector2.Distance(mouse, GetRectCenter(sourceRect.Value)) < cancelRadius)
+            {
+                return null;
+            }
+        }
+
+        int? nearest = null;
+        float nearestDistance = float.MaxValue;
+        foreach ((int index, Rectangle rect) in EnumerateSlotRects())
+        {
+            if (index == sourceIndex)
+            {
+                continue;
+            }
+
+            float distance = Vector2.Distance(mouse, GetRectCenter(rect));
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearest = index;
+            }
+        }
+
+        return nearest;
+    }
+
+    private IEnumerable<(int Index, Rectangle Rect)> EnumerateSlotRects()
+    {
+        int x = (int)_panelRect.X + PanelPadding;
+        int backpackY = (int)_panelRect.Y + PanelPadding + 30 + 20;
+
+        for (int row = 0; row < BackpackRows; row++)
+        {
+            for (int col = 0; col < Columns; col++)
+            {
+                yield return (Inventory.BackpackStartIndex + row * Columns + col, GetSlotRect(x, backpackY, col));
+            }
+
+            backpackY += ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding;
+        }
+
+        int hotbarY = backpackY + SectionGap + 20;
+        for (int col = 0; col < Inventory.HotbarSlotCount; col++)
+        {
+            yield return (col, GetSlotRect(x, hotbarY, col));
+        }
+    }
+
+    private static Vector2 GetRectCenter(Rectangle rect) =>
+        new Vector2(rect.X + rect.Width * 0.5f, rect.Y + rect.Height * 0.5f);
 
     private void HandleSlotInput(Inventory inventory)
     {
@@ -228,10 +319,13 @@ public sealed class InventoryUi
         {
             if (Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_LEFT))
             {
-                int? target = GetSlotIndexAt(mouse);
-                if (target != null && _pressSlotIndex != null && target != _pressSlotIndex)
+                if (_pressSlotIndex != null)
                 {
-                    inventory.SwapSlots(_pressSlotIndex.Value, target.Value);
+                    int? target = ResolveDropTarget(mouse, _pressSlotIndex.Value);
+                    if (target != null)
+                    {
+                        inventory.SwapSlots(_pressSlotIndex.Value, target.Value);
+                    }
                 }
 
                 ResetInteraction();
@@ -295,32 +389,23 @@ public sealed class InventoryUi
 
     private int? GetSlotIndexAt(Vector2 mouse)
     {
-        int x = (int)_panelRect.X + PanelPadding;
-        int backpackY = (int)_panelRect.Y + PanelPadding + 30 + 20;
-
-        for (int row = 0; row < BackpackRows; row++)
+        int? nearest = null;
+        float nearestDistance = float.MaxValue;
+        foreach ((int index, Rectangle rect) in EnumerateSlotRects())
         {
-            for (int col = 0; col < Columns; col++)
+            if (!Raylib.CheckCollisionPointRec(mouse, rect))
             {
-                if (Raylib.CheckCollisionPointRec(mouse, GetSlotRect(x, backpackY, col)))
-                {
-                    return Inventory.BackpackStartIndex + row * Columns + col;
-                }
+                continue;
             }
 
-            backpackY += ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding;
-        }
-
-        int hotbarY = backpackY + SectionGap + 20;
-
-        for (int col = 0; col < Inventory.HotbarSlotCount; col++)
-        {
-            if (Raylib.CheckCollisionPointRec(mouse, GetSlotRect(x, hotbarY, col)))
+            float distance = Vector2.Distance(mouse, GetRectCenter(rect));
+            if (distance < nearestDistance)
             {
-                return col;
+                nearestDistance = distance;
+                nearest = index;
             }
         }
 
-        return null;
+        return nearest;
     }
 }
