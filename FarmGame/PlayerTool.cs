@@ -33,6 +33,9 @@ public static class PlayerToolInfo
     public static bool IsSeed(PlayerTool tool) =>
         tool is PlayerTool.CarrotSeeds or PlayerTool.WheatSeeds or PlayerTool.TomatoSeeds or PlayerTool.CornSeeds;
 
+    public static bool IsInfinite(PlayerTool tool) =>
+        tool == PlayerTool.Hands || HasAction(tool);
+
     /// <summary>Icon source row in Player_Actions (down-facing start frame).</summary>
     public static int IconRow(PlayerTool tool) => tool switch
     {

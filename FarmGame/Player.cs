@@ -47,7 +47,7 @@ public sealed class Player
         WorldPosition = startWorldPosition;
     }
 
-    public void Update(float deltaTime, float worldWidth, float worldHeight, PlayerTool selectedTool)
+    public void Update(float deltaTime, float worldWidth, float worldHeight, PlayerTool selectedTool, bool allowActions, bool blockMouseActions)
     {
         if (_isUsingTool)
         {
@@ -68,11 +68,17 @@ public sealed class Player
             return;
         }
 
-        if (TryStartPlant(selectedTool))
+        if (!allowActions)
+        {
+            _velocity = Vector2.Zero;
+            return;
+        }
+
+        if (TryStartPlant(selectedTool, blockMouseActions))
         {
             // Allow movement while carrying seeds; planting is handled after movement below.
         }
-        else if (TryStartToolUse(selectedTool))
+        else if (TryStartToolUse(selectedTool, blockMouseActions))
         {
             return;
         }
@@ -149,7 +155,7 @@ public sealed class Player
         Raylib.UnloadTexture(_actionsTexture);
     }
 
-    private bool TryStartPlant(PlayerTool selectedTool)
+    private bool TryStartPlant(PlayerTool selectedTool, bool blockMouseActions)
     {
         if (!PlayerToolInfo.IsSeed(selectedTool))
         {
@@ -157,7 +163,7 @@ public sealed class Player
         }
 
         bool usePressed = Raylib.IsKeyPressed(KeyboardKey.KEY_SPACE)
-            || (Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT) && !IsMouseOverHotbar());
+            || (Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT) && !blockMouseActions);
 
         if (!usePressed)
         {
@@ -169,7 +175,7 @@ public sealed class Player
         return true;
     }
 
-    private bool TryStartToolUse(PlayerTool selectedTool)
+    private bool TryStartToolUse(PlayerTool selectedTool, bool blockMouseActions)
     {
         if (!PlayerToolInfo.HasAction(selectedTool))
         {
@@ -177,7 +183,7 @@ public sealed class Player
         }
 
         bool usePressed = Raylib.IsKeyPressed(KeyboardKey.KEY_SPACE)
-            || (Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT) && !IsMouseOverHotbar());
+            || (Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT) && !blockMouseActions);
 
         if (!usePressed)
         {
@@ -274,13 +280,6 @@ public sealed class Player
 
         _animTimer -= WalkFrameDuration;
         _animFrame = (_animFrame + 1) % WalkFrameCycle.Length;
-    }
-
-    private static bool IsMouseOverHotbar()
-    {
-        const int barHeight = 72;
-        const int barPadding = 12;
-        return Raylib.GetMouseY() >= Raylib.GetScreenHeight() - barHeight - barPadding * 2;
     }
 
     private static Vector2 ReadMoveInput()

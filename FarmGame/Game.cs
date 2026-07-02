@@ -38,7 +38,9 @@ public class Game
             Path.Combine(assetsBase, "Player", "Player_Actions.png"),
             startPos);
 
-        var hotbar = new Hotbar(player.WalkTexture, player.ActionsTexture, decorTexture);
+        var inventory = new Inventory();
+        var hotbar = new Hotbar(inventory, player.WalkTexture, player.ActionsTexture, decorTexture);
+        var inventoryUi = new InventoryUi(player.WalkTexture, player.ActionsTexture, decorTexture);
         var assets = new AssetLibrary();
         CropDefinitionStore.LoadAll();
         LoadSavedAssets(assets);
@@ -59,12 +61,27 @@ public class Game
 
             assetEditor.Update(ScreenWidth, ScreenHeight, assets);
 
+            Vector2 mouse = Raylib.GetMousePosition();
+            bool inventoryOpen = inventoryUi.IsOpen;
+            bool blockMouseActions = InventoryUi.BlocksGameplayInput(
+                mouse, ScreenWidth, ScreenHeight, inventoryOpen, inventoryUi.IsMouseOverPanel(mouse));
+            bool allowGameplay = !assetEditor.IsOpen && !inventoryOpen;
+
             Vector2 offset = ComputeCameraOffset(map.PixelWidth, map.PixelHeight, scale, ScreenWidth, ScreenHeight, player.WorldPosition);
+
+            if (allowGameplay)
+            {
+                hotbar.Update();
+            }
 
             if (!assetEditor.IsOpen)
             {
-                hotbar.Update();
-                player.Update(dt, worldW, worldH, hotbar.SelectedTool);
+                inventoryUi.Update(ScreenWidth, ScreenHeight, inventory);
+            }
+
+            if (allowGameplay)
+            {
+                player.Update(dt, worldW, worldH, hotbar.SelectedTool, allowActions: true, blockMouseActions);
 
                 if (player.ConsumeToolStrike())
                 {
@@ -72,15 +89,23 @@ public class Game
                     map.TryHoe(tileX, tileY);
                 }
 
-                if (player.ConsumePlantRequest(out PlayerTool seedTool))
+                if (player.ConsumePlantRequest(out PlayerTool seedTool) &&
+                    inventory.HotbarHasUsable(hotbar.SelectedIndex, seedTool))
                 {
                     CropType? cropType = CropTypeInfo.FromTool(seedTool);
                     if (cropType != null)
                     {
                         (int tileX, int tileY) = player.GetTargetTile(scale, map);
-                        crops.TryPlant(tileX, tileY, cropType.Value, map, assets);
+                        if (crops.TryPlant(tileX, tileY, cropType.Value, map, assets))
+                        {
+                            inventory.TryConsumeFromHotbar(hotbar.SelectedIndex, seedTool);
+                        }
                     }
                 }
+            }
+            else if (!assetEditor.IsOpen)
+            {
+                player.Update(dt, worldW, worldH, hotbar.SelectedTool, allowActions: false, blockMouseActions: true);
             }
             else
             {
@@ -96,12 +121,10 @@ public class Game
             player.Draw(scale, offset);
             assetEditor.DrawPlacementPreview(scale, offset);
             hotbar.Draw(ScreenWidth, ScreenHeight);
+            inventoryUi.Draw(ScreenWidth, ScreenHeight, inventory, hotbar.SelectedIndex);
             assetEditor.Draw(ScreenWidth, ScreenHeight);
 
-            if (!assetEditor.IsOpen)
-            {
-                UiText.DrawText("Tab: Asset Editor", 12, 10, 16, new Color(150, 155, 170, 255));
-            }
+            GameplayHints.Draw(ScreenWidth, ScreenHeight, inventoryUi.IsOpen, assetEditor.IsOpen);
 
             Raylib.EndDrawing();
 
