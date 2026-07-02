@@ -9,6 +9,7 @@ public sealed class InventoryUi
     private const int BackpackRows = 3;
     private const int PanelPadding = 16;
     private const int SectionGap = 12;
+    private const float DragThreshold = 4f;
 
     private readonly Texture2D _playerTexture;
     private readonly Texture2D _actionsTexture;
@@ -16,6 +17,9 @@ public sealed class InventoryUi
 
     private bool _isOpen;
     private int? _selectedSlotIndex;
+    private int? _pressSlotIndex;
+    private Vector2 _pressMouse;
+    private bool _isDragging;
     private Rectangle _panelRect;
 
     public InventoryUi(Texture2D playerTexture, Texture2D actionsTexture, Texture2D decorTexture)
@@ -30,13 +34,13 @@ public sealed class InventoryUi
     public void Toggle()
     {
         _isOpen = !_isOpen;
-        _selectedSlotIndex = null;
+        ResetInteraction();
     }
 
     public void Close()
     {
         _isOpen = false;
-        _selectedSlotIndex = null;
+        ResetInteraction();
     }
 
     public void Update(int screenWidth, int screenHeight, Inventory inventory)
@@ -59,11 +63,12 @@ public sealed class InventoryUi
         }
 
         LayoutPanel(screenWidth, screenHeight);
-        HandleSlotClicks(inventory);
+        HandleSlotInput(inventory);
     }
 
-    public void Draw(int screenWidth, int screenHeight, Inventory inventory,         int hotbarSelectedIndex)
-    {        if (!_isOpen)
+    public void Draw(int screenWidth, int screenHeight, Inventory inventory, int hotbarSelectedIndex)
+    {
+        if (!_isOpen)
         {
             return;
         }
@@ -82,6 +87,8 @@ public sealed class InventoryUi
         UiText.DrawText("Backpack", x, y, 14, new Color(150, 155, 170, 255));
         y += 20;
 
+        int? dropTarget = _isDragging ? GetSlotIndexAt(Raylib.GetMousePosition()) : null;
+
         int backpackY = y;
         for (int row = 0; row < BackpackRows; row++)
         {
@@ -92,7 +99,8 @@ public sealed class InventoryUi
                     inventory,
                     slotIndex,
                     GetSlotRect(x, backpackY, col),
-                    hotbarSelectedIndex: -1);
+                    hotbarSelectedIndex,
+                    dropTarget);
             }
 
             backpackY += ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding;
@@ -108,11 +116,26 @@ public sealed class InventoryUi
                 inventory,
                 col,
                 GetSlotRect(x, y, col),
-                hotbarSelectedIndex);
+                hotbarSelectedIndex,
+                dropTarget);
+        }
+
+        if (_isDragging && _pressSlotIndex != null)
+        {
+            InventorySlot dragged = inventory.GetSlot(_pressSlotIndex.Value);
+            if (!dragged.IsEmpty)
+            {
+                ItemSlotUi.DrawFloatingSlot(
+                    Raylib.GetMousePosition(),
+                    dragged,
+                    _playerTexture,
+                    _actionsTexture,
+                    _decorTexture);
+            }
         }
 
         y += ItemSlotUi.SlotSize + 8;
-        UiText.DrawText("Click two slots to swap · I or Esc to close", x, y, 14, new Color(130, 135, 150, 255));
+        UiText.DrawText("Click two slots to swap · drag to move · I or Esc to close", x, y, 14, new Color(130, 135, 150, 255));
     }
 
     public bool IsMouseOverPanel(Vector2 screenPos) =>
@@ -133,6 +156,13 @@ public sealed class InventoryUi
         }
 
         return IsMouseOverHotbar(screenPos, screenHeight);
+    }
+
+    private void ResetInteraction()
+    {
+        _selectedSlotIndex = null;
+        _pressSlotIndex = null;
+        _isDragging = false;
     }
 
     private void LayoutPanel(int screenWidth, int screenHeight)
@@ -159,11 +189,17 @@ public sealed class InventoryUi
         Inventory inventory,
         int slotIndex,
         Rectangle slotRect,
-        int hotbarSelectedIndex)
+        int hotbarSelectedIndex,
+        int? dropTargetIndex)
     {
         bool selected = _selectedSlotIndex == slotIndex;
         bool hotbarHighlight = slotIndex == hotbarSelectedIndex;
+        bool isDragSource = _isDragging && _pressSlotIndex == slotIndex;
         InventorySlot slot = inventory.GetSlot(slotIndex);
+        if (isDragSource)
+        {
+            slot = InventorySlot.Empty;
+        }
 
         ItemSlotUi.DrawSlot(
             slotRect,
@@ -173,39 +209,88 @@ public sealed class InventoryUi
             _actionsTexture,
             _decorTexture);
 
-        if (hotbarHighlight && !selected)
+        if (hotbarHighlight && !selected && !isDragSource)
         {
             Raylib.DrawRectangleLinesEx(slotRect, 2f, new Color(120, 170, 220, 255));
         }
+
+        if (dropTargetIndex == slotIndex && _pressSlotIndex != slotIndex)
+        {
+            Raylib.DrawRectangleLinesEx(slotRect, 2f, new Color(140, 220, 140, 255));
+        }
     }
 
-    private void HandleSlotClicks(Inventory inventory)
+    private void HandleSlotInput(Inventory inventory)
     {
-        if (!Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
-        {
-            return;
-        }
-
         Vector2 mouse = Raylib.GetMousePosition();
-        if (!Raylib.CheckCollisionPointRec(mouse, _panelRect))
+
+        if (_isDragging)
         {
+            if (Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_LEFT))
+            {
+                int? target = GetSlotIndexAt(mouse);
+                if (target != null && _pressSlotIndex != null && target != _pressSlotIndex)
+                {
+                    inventory.SwapSlots(_pressSlotIndex.Value, target.Value);
+                }
+
+                ResetInteraction();
+            }
+
             return;
         }
 
-        int? clicked = GetSlotIndexAt(mouse);
-        if (clicked == null)
+        if (_pressSlotIndex != null && Raylib.IsMouseButtonDown(MouseButton.MOUSE_BUTTON_LEFT))
         {
+            if (Vector2.Distance(mouse, _pressMouse) >= DragThreshold &&
+                !inventory.GetSlot(_pressSlotIndex.Value).IsEmpty)
+            {
+                _isDragging = true;
+                _selectedSlotIndex = null;
+            }
+
             return;
         }
 
-        if (_selectedSlotIndex == null)
+        if (Raylib.IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
         {
-            _selectedSlotIndex = clicked;
+            int? clicked = GetSlotIndexAt(mouse);
+            if (clicked == null)
+            {
+                _selectedSlotIndex = null;
+                _pressSlotIndex = null;
+                return;
+            }
+
+            _pressSlotIndex = clicked;
+            _pressMouse = mouse;
             return;
         }
 
-        inventory.SwapSlots(_selectedSlotIndex.Value, clicked.Value);
-        _selectedSlotIndex = null;
+        if (Raylib.IsMouseButtonReleased(MouseButton.MOUSE_BUTTON_LEFT) && _pressSlotIndex != null)
+        {
+            int? clicked = GetSlotIndexAt(mouse);
+            _pressSlotIndex = null;
+
+            if (clicked == null)
+            {
+                return;
+            }
+
+            if (_selectedSlotIndex == null)
+            {
+                _selectedSlotIndex = clicked;
+            }
+            else if (_selectedSlotIndex == clicked)
+            {
+                _selectedSlotIndex = null;
+            }
+            else
+            {
+                inventory.SwapSlots(_selectedSlotIndex.Value, clicked.Value);
+                _selectedSlotIndex = null;
+            }
+        }
     }
 
     private int? GetSlotIndexAt(Vector2 mouse)

@@ -48,7 +48,7 @@ public static class GameplayHints
 
         if (inventoryOpen)
         {
-            string inventoryHint = "Inventory open — click two slots to swap · I or Esc to close";
+            string inventoryHint = "Inventory open — click two slots to swap, drag to move · I or Esc to close";
             int hintY = screenHeight - 36;
             Raylib.DrawRectangle(0, hintY - 8, screenWidth, 32, PanelFill);
             UiText.DrawText(inventoryHint, 12, hintY, fontSize, HintText);
