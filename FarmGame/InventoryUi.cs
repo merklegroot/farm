@@ -373,7 +373,10 @@ public sealed class InventoryUi
 
             if (_selectedSlotIndex == null)
             {
-                _selectedSlotIndex = clicked;
+                if (!inventory.GetSlot(clicked.Value).IsEmpty)
+                {
+                    _selectedSlotIndex = clicked;
+                }
             }
             else if (_selectedSlotIndex == clicked)
             {
