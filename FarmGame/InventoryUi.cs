@@ -62,9 +62,8 @@ public sealed class InventoryUi
         HandleSlotClicks(inventory);
     }
 
-    public void Draw(int screenWidth, int screenHeight, Inventory inventory, int hotbarSelectedIndex)
-    {
-        if (!_isOpen)
+    public void Draw(int screenWidth, int screenHeight, Inventory inventory,         int hotbarSelectedIndex)
+    {        if (!_isOpen)
         {
             return;
         }
@@ -83,24 +82,33 @@ public sealed class InventoryUi
         UiText.DrawText("Backpack", x, y, 14, new Color(150, 155, 170, 255));
         y += 20;
 
+        int backpackY = y;
         for (int row = 0; row < BackpackRows; row++)
         {
             for (int col = 0; col < Columns; col++)
             {
                 int slotIndex = Inventory.BackpackStartIndex + row * Columns + col;
-                DrawInventorySlot(inventory, slotIndex, x, y, col, row, hotbarSelectedIndex: -1);
+                DrawInventorySlot(
+                    inventory,
+                    slotIndex,
+                    GetSlotRect(x, backpackY, col),
+                    hotbarSelectedIndex: -1);
             }
 
-            y += ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding;
+            backpackY += ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding;
         }
 
-        y += SectionGap;
+        y = backpackY + SectionGap;
         UiText.DrawText("Hotbar", x, y, 14, new Color(150, 155, 170, 255));
         y += 20;
 
         for (int col = 0; col < Inventory.HotbarSlotCount; col++)
         {
-            DrawInventorySlot(inventory, col, x, y, col, 0, hotbarSelectedIndex);
+            DrawInventorySlot(
+                inventory,
+                col,
+                GetSlotRect(x, y, col),
+                hotbarSelectedIndex);
         }
 
         y += ItemSlotUi.SlotSize + 8;
@@ -140,21 +148,19 @@ public sealed class InventoryUi
         _panelRect = new Rectangle(panelX, panelY, panelWidth, panelHeight);
     }
 
-    private void DrawInventorySlot(
-        Inventory inventory,
-        int slotIndex,
-        int originX,
-        int originY,
-        int col,
-        int row,
-        int hotbarSelectedIndex)
-    {
-        var slotRect = new Rectangle(
+    private static Rectangle GetSlotRect(int originX, int originY, int col) =>
+        new Rectangle(
             originX + col * (ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding),
-            originY + row * (ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding),
+            originY,
             ItemSlotUi.SlotSize,
             ItemSlotUi.SlotSize);
 
+    private void DrawInventorySlot(
+        Inventory inventory,
+        int slotIndex,
+        Rectangle slotRect,
+        int hotbarSelectedIndex)
+    {
         bool selected = _selectedSlotIndex == slotIndex;
         bool hotbarHighlight = slotIndex == hotbarSelectedIndex;
         InventorySlot slot = inventory.GetSlot(slotIndex);
@@ -205,36 +211,26 @@ public sealed class InventoryUi
     private int? GetSlotIndexAt(Vector2 mouse)
     {
         int x = (int)_panelRect.X + PanelPadding;
-        int y = (int)_panelRect.Y + PanelPadding + 30 + 20;
+        int backpackY = (int)_panelRect.Y + PanelPadding + 30 + 20;
 
         for (int row = 0; row < BackpackRows; row++)
         {
             for (int col = 0; col < Columns; col++)
             {
-                var slotRect = new Rectangle(
-                    x + col * (ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding),
-                    y + row * (ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding),
-                    ItemSlotUi.SlotSize,
-                    ItemSlotUi.SlotSize);
-
-                if (Raylib.CheckCollisionPointRec(mouse, slotRect))
+                if (Raylib.CheckCollisionPointRec(mouse, GetSlotRect(x, backpackY, col)))
                 {
                     return Inventory.BackpackStartIndex + row * Columns + col;
                 }
             }
+
+            backpackY += ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding;
         }
 
-        y += BackpackRows * (ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding) + SectionGap + 20;
+        int hotbarY = backpackY + SectionGap + 20;
 
         for (int col = 0; col < Inventory.HotbarSlotCount; col++)
         {
-            var slotRect = new Rectangle(
-                x + col * (ItemSlotUi.SlotSize + ItemSlotUi.SlotPadding),
-                y,
-                ItemSlotUi.SlotSize,
-                ItemSlotUi.SlotSize);
-
-            if (Raylib.CheckCollisionPointRec(mouse, slotRect))
+            if (Raylib.CheckCollisionPointRec(mouse, GetSlotRect(x, hotbarY, col)))
             {
                 return col;
             }
